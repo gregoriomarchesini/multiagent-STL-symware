@@ -55,9 +55,10 @@ flowchart TD
 The lowe level controller actually takes care of sending the force and torque commands to the drone. This is done by receiving the velocity command from the high level controller and then a PD controller approach is applied to reach the desired velocity.
 
 The dynamics of the system is the following. 
-$'
-\begin{aligned}
-\dot{v}_x = g\theta\\
+$$
+\dot{v}_x = g\theta
+$$
+
 \dot{v}_y = g\phi\\
 \dot{\theta} = \frac{1}{I_y}\tau_y\\
 \dot{\phi} = \frac{1}{I_x}\tau_x
