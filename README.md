@@ -63,11 +63,12 @@ $\dot{v}_y = g\phi$
 $\dot{\theta} = \frac{1}{I_y}\tau_y$
 
 $\dot{\phi} = \frac{1}{I_x}\tau_x$
+
+
 Hence by simple differentiations we have 
-$'
-\begin{aligned}
-\ddot{v}_x = \frac{g}{I_y}\tau_y\\
-\ddot{v}_y = \frac{g}{I_x}\tau_x\\
-\end{aligned}
-'$
+
+$\ddot{v}_x = \frac{g}{I_y}\tau_y$
+
+$\ddot{v}_y = \frac{g}{I_x}\tau_x$
+
 The torque is the then selected to stabilize this system to zero.
