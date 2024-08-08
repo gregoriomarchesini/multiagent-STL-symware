@@ -1,6 +1,7 @@
 import asyncio
 from dataclasses import dataclass
 from typing import Iterable
+import casadi as ca
 
 import numpy as np
 
@@ -66,12 +67,16 @@ class MyPerceptionSystem(PerceptionSystem):
         return {self._agent_id: StateObservation(self._agent_id, self._env.get_agent_state(self.agent_id))}
     
 
-class LowLevelController(Controller):
+
+
+
+class VelocityController(Controller):
     __LOGGER = get_logger(__name__, "SimpleController")
     def __init__(
         self,
         agent_id,
         async_loop_lock: TimeIntervalAsyncLoopLock | None = None,
+        altitude_ref: float = 1,
     ):
         super().__init__(agent_id, async_loop_lock)
     
@@ -86,6 +91,54 @@ class LowLevelController(Controller):
         #  v_x = g/I_y * tau_theta -> simple second order system with input tau_theta
         
         # They are the same value for these two axes
+        
+        
+        
+        self._fx_dot = 0.
+        self._fy_dot = 0.
+        
+        self._fx_prev = 0.
+        self._fy_prev = 0.
+        
+        self._fx_dot_prev = 0.
+        self._fy_dot_prev = 0.
+        
+        self._vx_ref        = 0.2
+        self._vx_dot_error  = 0
+        self._vx_int_error  = 0
+        self._vx_error      = 0
+        self._vx_error_prev = 0
+        
+        
+        self._vy_ref        = 0
+        self._vy_dot_error  = 0
+        self._vy_int_error  = 0
+        self._vy_error      = 0
+        self._vy_error_prev = 0
+        
+
+        self._integration_interval = 10 # seconds
+        self._rewind_integrator_max_iter = int(self._integration_interval/self.async_loop_lock.time_interval)
+        
+        
+        self.h_ref       = altitude_ref
+        self._h_dot_error = 0
+        self._h_int_error = 0
+        
+        self._h_error      = 0
+        self._h_error_prev = 0
+        self._integration_interval = 10 # seconds
+        self._rewind_integrator_max_iter = int(self._integration_interval/self.async_loop_lock.time_interval)
+        
+        
+        self._Kd_h              = 0.05
+        self._Kp_h              = 0.001
+        self._Ki_h              = 0.0
+        
+        self._Kp_v = 3
+        self._Kd_v = 0.001
+        self._Ki_v = 1
+        
     
     def initialise_component(
             self,
@@ -104,53 +157,68 @@ class LowLevelController(Controller):
             raise RuntimeError("The agent model does not have the inertia values. Please check the model of the agent to be a drone")
         
         
-        self.altitude_ref = initial_awareness_database[self._agent_id].state[2]
-        self._error_vx_prev = 0 # previous velocity error in vx
-        self._error_vy_prev = 0 # previous velocity error in vy
-        
-        self.current_vx = 0
-        self.current_vy = 0 
-        
-        self.current_target_vx = 0
-        self.current_target_vy = 0
-        
-        # you can tune using matlab
-        self._Kd = 0.1
-        a        = I_xx/9.81 # gravity to inertia ratio
-        zeta     = 0.9 # damping ration
-        self._Kp = (self._Kd/2/np.sqrt(a)/zeta)**2
-        
  
     def _compute(self) :
         """Simple PD controller to track a given velocity profile in the x-y component"""
         
-        self._current_vx = 0
-        self._current_vy = 0
         
-        altitude_error = (self._agent.self_awareness.state[2] - self.altitude_ref)
+        current_vx,current_vy   = self._agent.self_awareness.state[7:9]
+        current_height   = self._agent.self_awareness.state[2]
+       
+        # velocity error computation
+        self._vx_error      = current_vx           - self._vx_ref
+        self._vx_dot_error  =  (self._vx_error     - self._vx_error_prev)/self.async_loop_lock.time_interval
+        self._vx_int_error  =   self._vx_int_error + self._vx_error*self.async_loop_lock.time_interval
+        self._vx_error_prev =   self._vx_error
         
-        error_vx = self.current_target_vx  - self.current_vx
-        error_vy = self.current_target_vy  - self.current_vy
-
-        # check signs
-        self.tau_theta = -self._Kp * error_vx - self._Kd * (error_vx - self._error_vx_prev)/self.async_loop_lock.time_interval
-        self.tau_phi   = -self._Kp * error_vy - self._Kd * (error_vy - self._error_vy_prev)/self.async_loop_lock.time_interval
-      
-        self._error_vx_prev = error_vx
-        self._error_vy_prev = error_vy
+        self._vy_error      = current_vy           - self._vy_ref
+        self._vy_dot_error  =  (self._vy_error     - self._vy_error_prev)/self.async_loop_lock.time_interval
+        self._vy_int_error  =   self._vy_int_error + self._vy_error*self.async_loop_lock.time_interval
+        self._vy_error_prev =   self._vy_error
+        
+        # altitude error computation
+        self._h_error     = (current_height - self.h_ref)
+        self._h_dot_error = (self._h_error- self._h_error_prev)/self.async_loop_lock.time_interval
+        
+        # integral and memory updates
+        self._h_int_error += self._h_error*self.async_loop_lock.time_interval
+        self._h_error_prev = self._h_error 
+        
+        # Only this part is really used
+        fx = -self._Kp_v * self._vx_error - self._Kd_v * self._vx_dot_error
+        fy = -self._Kp_v * self._vy_error - self._Kd_v * self._vy_dot_error
+        
+        
+        self._fx_dot = (fx - self._fx_prev)/self.async_loop_lock.time_interval
+        self._fy_dot = (fy - self._fy_prev)/self.async_loop_lock.time_interval
+        
+        self._fy_dot_dot = (self._fy_dot - self._fy_dot_prev)/self.async_loop_lock.time_interval
+        self._fx_dot_dot = (self._fx_dot - self._fx_dot_prev)/self.async_loop_lock.time_interval
+        
+        
+        self._fx_dot_prev = self._fx_dot
+        self._fy_dot_prev = self._fy_dot
+        
+        self._fx_prev = fx
+        self._fy_prev = fy
+        
+        
+        
+        
+        print("current_vx",current_vx)
+        print("current_vy",current_vy)
+        print("target_vx",self._vx_ref)
+        print("target_vy",self._vy_ref)
+        print(self._fx_dot)
         model : DroneCf2xModel = self._agent.model
         
-        torques = np.array([self.tau_phi,self.tau_theta, 0])
-        force   = (4*model.hover_rpm**2 * model.kf) - (altitude_error)*0.001
-        print(altitude_error)
-        
-        model : DroneCf2xModel = self._agent.model
-        rpm = model.convert_force_and_torque_to_rpm(force,torques)
+        forces = np.array([fx,fy,self._fx_dot_dot,self._fy_dot_dot]) # !todo: nicely change the framwork to get forces instead of RPM
         # check if you want to print that force is equal to gravity
-        return rpm, TimeSeries()
+        return forces, TimeSeries() # the dynamical model step function was modified to accept forces
 
 
 
+        
 def main():
     ###########################################################
     # 0. Parameters                                           #
@@ -195,13 +263,13 @@ def main():
         perception = MyPerceptionSystem(agent.id, env, TimeIntervalAsyncLoopLock(TIME_INTERVAL))
         agent.add_components(
             perception,
-            LowLevelController(agent.id, async_loop_lock=TimeIntervalAsyncLoopLock(TIME_INTERVAL)),
+            VelocityController(agent.id, async_loop_lock=TimeIntervalAsyncLoopLock(TIME_INTERVAL)),
         )
 
         ###########################################################
         # 5. Initialise the agent with some starting information  #
         ###########################################################
-        agent.initialise_agent(AwarenessVector(agent.id, np.zeros(7)), {agent.id: MyKnowledgeDatabase()})
+        agent.initialise_agent(AwarenessVector(agent.id, np.zeros(13)), {agent.id: MyKnowledgeDatabase()})
 
         ###########################################################
         # 6. Add the agent to the coordinator                     #
@@ -211,7 +279,8 @@ def main():
     ###########################################################
     # 7. Run the simulation                                   #
     ###########################################################
-    agent_coordinator.async_run()
+    # agent_coordinator.async_run()
+    agent_coordinator.run(1/240.)
 
 
 if __name__ == "__main__":

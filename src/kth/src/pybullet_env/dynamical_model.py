@@ -233,7 +233,7 @@ class DroneModel(DynamicalModel):
         self.quat: tuple[float, float, float, float]
         self.vel: tuple[float, float, float]
         self.ang_v: tuple[float, float, float]
-        self.rpy_rates: np.ndarray
+        self.rpy_rates: np.ndarray = np.zeros(3)
         self._last_timestamp = time.time()
 
     @property
@@ -298,7 +298,10 @@ class DroneModel(DynamicalModel):
         self.__LOGGER.info(
             "dw_coeff_1 %f, dw_coeff_2 %f, dw_coeff_3 %f", self.dw_coeff_1, self.dw_coeff_2, self.dw_coeff_3
         )
-
+    
+    
+        
+        
     def _show_drone_local_axes(self):
         """Draws the local frame of the n-th drone in PyBullet's GUI."""
         if self.debug:
@@ -338,7 +341,21 @@ class DroneModel(DynamicalModel):
             (normalized_control_input + 1) * self.hover_rpm,
             self.hover_rpm + (self.max_rpm - self.hover_rpm) * normalized_control_input,
         )
+    
+    def from_quaternion_to_euler(self, quat: np.ndarray) -> np.ndarray:
+        """Converts a quaternion to Euler angles.
 
+        Args
+        ----
+        quat:
+            (4)-shaped array of floats containing the quaternion to be converted.
+
+        Returns
+        -------
+            (3)-shaped array of floats containing the Euler angles.
+        """
+        return p.getEulerFromQuaternion(quat)
+        
     def _update_kinematic_info(self):
         """Updates and stores the drones kinematic information.
 
@@ -348,7 +365,8 @@ class DroneModel(DynamicalModel):
         self.pos, self.quat = p.getBasePositionAndOrientation(self._entity_id)
         self.rpy = p.getEulerFromQuaternion(self.quat)
         self.vel, self.ang_v = p.getBaseVelocity(self._entity_id)
-
+        
+      
     def _integrate_q(self, quat: np.ndarray, omega: np.ndarray, dt: float) -> np.ndarray:
         omega_norm = np.linalg.norm(omega)
         b, q, r = omega
@@ -378,7 +396,7 @@ class DroneModel(DynamicalModel):
         quat = self.quat
         vel = self.vel
         rpy_rates = self.rpy_rates
-        rotation = np.array(p.getMatrixFromQuaternion(quat)).reshape(3, 3)
+        rotation  = np.array(p.getMatrixFromQuaternion(quat)).reshape(3, 3)
         #### Compute forces and torques ############################
         forces = np.array(rpm**2) * self.kf
         thrust = np.array([0, 0, np.sum(forces)])
@@ -492,6 +510,21 @@ class DroneModel(DynamicalModel):
         p.applyExternalTorque(self._entity_id, 4, torqueObj=[0, 0, z_torque], flags=p.LINK_FRAME)
 
         self._update_kinematic_info()
+        
+    def step(self):
+        """Advances the environment by one simulation step."""
+        self._update_kinematic_info()
+        
+        fx = self.control_input[0]
+        fy = self.control_input[1]
+        fx_dot_dot = self.control_input[2]
+        fy_dot_dot = self.control_input[3]
+        
+        #### Note: the base's velocity only stored and not used ####
+        p.applyExternalForce(self._entity_id, 4,forceObj=[fx, fy, self.gravity],posObj=[0, 0, 0],flags=p.LINK_FRAME)
+        p.applyExternalTorque(self._entity_id, 4, torqueObj=[fx_dot_dot/9.81*self.iyy, fy_dot_dot/9.81*self.ixx, 0], flags=p.LINK_FRAME)
+
+
 
     @abstractmethod
     def _get_torque(self, rpm: float, forces: np.ndarray) -> tuple[float, float, float]:
@@ -546,12 +579,12 @@ class DroneCf2xModel(DroneModel):
         
         # matrix from forces/torques to rpm
         
-        self.A = np.array([[self.kf             , self.kf            , self.kf             , self.kf], 
-                      [self.l / np.sqrt(2) , self.l / np.sqrt(2), -self.l / np.sqrt(2), -self.l / np.sqrt(2)], 
-                      [-self.l / np.sqrt(2), self.l / np.sqrt(2), self.l / np.sqrt(2) , -self.l / np.sqrt(2)], 
-                      [-self.km            , self.km            , -self.km            , self.km]])
+        self.rpm_square_to_force_and_torque_matrix = np.array([[self.kf                       , self.kf                     , self.kf                      , self.kf], 
+                                                         [self.l / np.sqrt(2)*self.kf   , self.l / np.sqrt(2)*self.kf , -self.l / np.sqrt(2)*self.kf , -self.l / np.sqrt(2)*self.kf], 
+                                                         [-self.l / np.sqrt(2)*self.kf  , self.l / np.sqrt(2)*self.kf , self.l / np.sqrt(2) *self.kf , -self.l / np.sqrt(2)*self.kf], 
+                                                         [-self.km                      , self.km                     , -self.km                     , self.km]])
         
-        self.A_inv = np.linalg.inv(self.A)
+        self.force_and_torque_to_rpm_square_matrix = np.linalg.inv(self.rpm_square_to_force_and_torque_matrix)
 
     def _get_torque(self, rpm: float, forces: np.ndarray) -> tuple[float, float, float]:
         z_torques = np.array(rpm**2) * self.km
@@ -561,8 +594,11 @@ class DroneCf2xModel(DroneModel):
         return x_torque, y_torque, z_torque
 
     def convert_force_and_torque_to_rpm(self,force:float, torque:np.ndarray) -> np.ndarray:
-        rpm = np.sqrt(self.A_inv @ np.array([force, torque[0], torque[1], torque[2]])[:,np.newaxis])
+        
+        rpm = np.sqrt(self.force_and_torque_to_rpm_square_matrix @ np.array([force, torque[0], torque[1], torque[2]])[:,np.newaxis])
+        print(rpm)
         # cut the rmp to the max value
+
         rpm = np.clip(rpm, 0, self.max_rpm)
         return rpm.flatten()
     
