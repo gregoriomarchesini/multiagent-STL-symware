@@ -1,0 +1,12 @@
+# Do not include virtual environments
+.venv
+.vscode
+
+# do not include log files of jit 
+*.log
+__pycache__
+jit_*
+tmp_*
+simulations/publication_testing
+*.npy
+*.gpickle
