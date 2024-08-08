@@ -6,8 +6,6 @@ from   abc import ABC, abstractmethod
 import sys
 import matplotlib.pyplot as plt
 
-from loggers.loggers import get_logger
-
 UniqueIdentifier : TypeAlias = int #Identifier of a single agent in the system
 SmoothMinBarrier         = Union["IndependentSmoothMinBarrierFunction", "CollaborativeLinearBarrierFunction"]
 LinearBarrier            = Union["IndependentLinearBarrierFunction", "CollaborativeLinearBarrierFunction"]

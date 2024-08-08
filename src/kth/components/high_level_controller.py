@@ -24,12 +24,11 @@ SOFTWARE.
 
 import numpy as np
 import casadi as ca
-from   typing import Callable,Union
+from   typing import Callable
 import logging
-from   abc import ABC,abstractmethod
+import time
 
-from   loggers.loggers import get_logger
-from    stl.dynamics import DynamicalModel
+from    stl.dynamics import MathematicalDynamicalModel
 from    stl.stl import (StlTask,
                         IndependentLinearBarrierFunction,
                         CollaborativeLinearBarrierFunction,
@@ -41,105 +40,33 @@ from    stl.stl import (StlTask,
                         SmoothMinBarrier,        
                         LinearBarrier,           
                         CollaborativeBarrierType,
-                        IndependentBarrierType  )
+                        IndependentBarrierType  ,
+                        )
 
-from   .utils import LeadershipToken, NoStdStreams
+from data.data import (ControlMessage,ControlMessageType)
+
+from   .utils import LeadershipToken
 from   .optimization_module import BestImpactSolver, WorseImpactSolver
 
-
-# Just a standard publisher class
-class Publisher(ABC):
-    """ Simple implementation of a subscriber publisher pattern"""
-    def __init__(self) -> None:
-        self._subscribers = {}
-    
-    
-    def add_topic(self, event_type:str):
-        """A
-        dd list of topics
-        
-        Args:
-            event_type (str): [description]
-        
-        Example :
-        >>> A = Publisher()
-        >>> a.add_topic("position_event")
-        """
-        if event_type not in self._subscribers:
-            self._subscribers.setdefault(event_type,set())
-            
-    def register(self, event_type:str, callback:Callable): # register topics the publisher will publish
-        """Register a subscriber to an event published by the publisher
-
-        Args:
-            event_type : event
-            callback   : Collable to be applied for the given event
-
-        Raises:
-            ValueError: If the event is not among the topics of the publisher
-            
-            
-        Example :
-        >>> A = Publisher()
-        >>> a.add_topic("position_event")
-        >>> def callback(*args,**kwargs):
-        >>>     print("I am a callback")
-        >>> a.register("position_event",callback)    
-        
-        """
-        if event_type not in self._subscribers:
-            raise ValueError(f"string '{event_type}' is not a valid str for this subscriber. Available events are {list(self._subscribers.keys())}")
-        self._subscribers[event_type].add(callback)
+from symaware.base import (get_logger,
+                           Controller,
+                           MultiAgentAwarenessVector,
+                           MultiAgentKnowledgeDatabase,
+                           Agent,
+                           TimeSeries)
 
 
-    def unregister(self, event_type:str, callback: Callable): # unregister topics the publisher will publish
-        """Simply unregister an event"""
-        if event_type in self._subscribers:
-            self._subscribers[event_type].discard(callback)
-        
-    @abstractmethod 
-    def notify(self, event_type:str, *args, **kwargs):
-        """H
-        A notification is sent to every subscriber when a notification to the given event is sent.
-        Here you can define how the call back are called based on the vent for example. 
-        
-        Args:
-            event_type (str): the event that triggers the notification (the topic)
-            *args: some argumetns for the call back
-            **kwargs: Some Keywards to pass to the callback
-        
-        Example :
-        >>>
-        >>> def callback(name = "ciao"):
-        >>>     print("I am a callback")
-        >>>
-        >>> # inside publisher
-        >>> def notify(name="Greg"):
-        >>>     for callback in self._subscribers[event_type]:
-        >>>         callback(name=name)
-        """
-        
-        pass
-   
-    @property
-    def topics(self):
-        return list(self._subscribers.keys())
-
-
-
-
-class STLController(Publisher):
+class STLController(Controller):
     """STL-QP based controller"""
     def __init__(self, unique_identifier      : int,
-                       dynamical_model        : DynamicalModel,
-                       log_level              : int | str = logging.INFO,
+                       dynamical_model_math   : MathematicalDynamicalModel,
                        look_ahead_time_window : float = float("inf")) -> None:
         
         
         """
         Args :
             unique_identifier (int) : unique identifier of the agent
-            dynamical_model (DynamicalModel) : dynamical model of the agent
+            dynamical_model_math (DynamicalModel) : dynamical model of the agent
             log_level (int) : log level for the logger
             look_ahead_time_window (float) : time window to look ahead in the future
 
@@ -150,11 +77,11 @@ class STLController(Publisher):
         """
         
         
-        if not isinstance(dynamical_model,DynamicalModel):
-            raise ValueError(f"the dynamical model should be an instance of DynamicalModel. You have {type(dynamical_model)}")
+        if not isinstance(dynamical_model_math,MathematicalDynamicalModel):
+            raise ValueError(f"the dynamical model should be an instance of DynamicalModel. You have {type(dynamical_model_math)}")
             
-        if dynamical_model.unique_identifier != unique_identifier:
-            raise ValueError(f"the dynamical model unique_identifier is {dynamical_model.unique_identifier} but the agent unique_identifier is {unique_identifier}. They should be the same")
+        if dynamical_model_math.unique_identifier != unique_identifier:
+            raise ValueError(f"the dynamical model unique_identifier is {dynamical_model_math.unique_identifier} but the agent unique_identifier is {unique_identifier}. They should be the same")
         
         if (look_ahead_time_window <= 0):
             raise ValueError(f"look_ahead_time_window should be a positive number. You have {look_ahead_time_window}")
@@ -162,7 +89,7 @@ class STLController(Publisher):
         super().__init__()
         
         self._unique_identifier              = unique_identifier
-        self._dynamical_model                = dynamical_model
+        self._dynamical_model_math                = dynamical_model_math
         self._look_ahead_time_window         = look_ahead_time_window
         self._stl_tasks : list[StlTask]      = []    # list of all the tasks to be satisfied by the controller
         
@@ -193,24 +120,21 @@ class STLController(Publisher):
         self._gamma                     : float            = 1      # 0 < gamma_i <= 1 control reduction function
         self._gamma_tilde               : dict[int,float|None]  = dict()     # list of all the intermediate gammas for each task. This corresponds to tilde_gamma_ij
 
-        self._best_impact_solver  = BestImpactSolver(model = dynamical_model)
-        self._worse_impact_solver = WorseImpactSolver(model = dynamical_model)
+        self._best_impact_solver  = BestImpactSolver(model = dynamical_model_math)
+        self._worse_impact_solver = WorseImpactSolver(model = dynamical_model_math)
         
         scalar = ca.MX.sym("scalar",1)
         factor = 50
         self._alpha_fun = ca.Function("alpha_fun",[scalar],[ ca.if_else(scalar>=0,factor*scalar,0.002*scalar) ])
         
         # check if tasks are given to this controller
-        self._has_tasks                 = False
-        self._has_self_tasks            = False
-        self._is_leaf                   = False
-        self._jit                       =  False # just in time compilation of the controller
-        topics = ["best_impact","worse_impact"]
+        self._has_tasks                  = False
+        self._has_self_tasks             = False
+        self._is_leaf                    = False
+        self._has_already_computed_gamma = False
+        self._last_velocity_input        = np.array([0.,0.]) 
         
-        for topic in topics:
-            self.add_topic(topic)
-        
-        self._logger = get_logger(f"Controller {self._unique_identifier}", level=log_level)
+        self.__LOGGER = get_logger(__name__, f"Controller {self._unique_identifier}")
 
     
     #exposed attributes according to main abstract class
@@ -218,8 +142,8 @@ class STLController(Publisher):
     def unique_identifier(self) -> int:
         return self._unique_identifier
     @property
-    def dynamical_model(self) -> DynamicalModel:
-        return self._dynamical_model
+    def dynamical_model_math(self) -> MathematicalDynamicalModel:
+        return self._dynamical_model_math
     @property
     def barrier_functions(self) -> dict[int,SmoothMinBarrier]:
         """barrier functions"""
@@ -243,75 +167,10 @@ class STLController(Publisher):
         else :
             return all([self._gamma_tilde[identifier] != None for identifier in self._leader_neighbours]) 
   
-    
-    # Main routines 
-    def setup_optimizer(self, initial_conditions: dict[int,np.ndarray], stl_tasks:list[StlTask], leadership_tokens: dict[int,LeadershipToken],initial_time: float, jit:bool= False) -> None:
-        """Used to set up the controller. The main objective here it is to transform the tasks into barriers and then to initialise the constraints for the optimization problem"""
-        self._logger.debug(f"Setting up the controller")
+    @property
+    def has_received_worse_impact_from_follower(self) -> bool:
+        return self._worse_impact_from_follower != None
         
-        # Save all the leader neighbours
-        self._logger.debug(f"Recorded leadreship tokens : {leadership_tokens}")
-        self._leader_neighbours , self._follower_neighbour = self.get_leader_and_follower_neighbours(leadership_tokens)
-        self._best_impact_from_leaders = {unique_identifier : None for unique_identifier in self._leader_neighbours} # initialise the best impact from leaders
-        self._task_neighbours_id       = self._leader_neighbours + [self._follower_neighbour] if self._follower_neighbour is not None else self._leader_neighbours
-     
-        self._initialization_time = initial_time  # time at which the problem is initialized
-        self._params              = self.get_optimization_parameters_dictionary(self._task_neighbours_id)   
-        self._gamma_tilde         = {unique_identifier : None for unique_identifier in self._leader_neighbours} # initialise the gamma tilde values 
-        self._jit                = jit
-        
-        # add the tasks to the controller
-        try :
-            stl_tasks = iter(stl_tasks)
-        except TypeError:
-            raise TypeError("stl_tasks should be an iterable of StlTask objects")
-        stl_tasks = filter_tasks_by_time_limit(stl_tasks,initial_time,initial_time + self._look_ahead_time_window)
-        for task in stl_tasks:
-            self.check_task(task) # raises an error in case the task is not correct
-            self._stl_tasks.append(task)
-        
-        # now get all the constraints for the optimization problem
-        self._barrier_constraints      = self.generate_barrier_constraints(self._stl_tasks,initial_conditions)
-        slack_constraints              = self.get_slack_constraints()
-        control_input_constraints      = self.get_control_input_constraints()
-        collision_avoidance_constraint = self.collision_avoidance_constraint()
-        
-        self._optimizer.subject_to(ca.vertcat(*self._barrier_constraints) <= 0)
-        self._optimizer.subject_to(ca.vertcat(*control_input_constraints) <= 0)
-        # self._optimizer.subject_to(collision_avoidance_constraint <= 0) #todo! : check here when you can add the collision avoidance constraint again
-        if len(slack_constraints) != 0:
-            self._optimizer.subject_to(ca.vertcat(*slack_constraints) <= 0)
-        
-        # set up cost
-        cost  = self._control_input_var.T @  self._control_input_var # classic quadratic cost (work for simple integrator types of system)
-        cost += ca.vertcat(*self._slack_vars).T @ ca.vertcat(*self._slack_vars) # add slack variables to the cost
-        
-        
-        
-        if self._jit:
-            # Problem options
-            p_opts = dict(print_time=False, 
-                        verbose=False,
-                        expand=True,
-                        compiler='shell',
-                        jit=True,  # Enable JIT compilation
-                        jit_options={"flags": '-O3', "verbose": True, "compiler": 'gcc'})  # Specify the compiler (optional, default is gcc))
-        else:
-            p_opts = dict(print_time=False, 
-                        verbose=False,
-                        expand=True)
-
-        
-        # Solver options
-        s_opts = dict(
-            print_level=0,
-            tol=1e-6,
-            max_iter=1000,
-            )
-        
-        self._optimizer.minimize(cost)
-        self._optimizer.solver("ipopt",p_opts,s_opts)
-        self._logger.debug(f"Recorded Follower neighbour : {self._follower_neighbour}")
        
     def get_leader_and_follower_neighbours(self,leadership_tokens: dict[int,LeadershipToken]) -> tuple[list[int],int]:
         
@@ -343,9 +202,9 @@ class STLController(Publisher):
                 else:
                     contributing_agents = task.predicate.contributing_agents
                     if len(contributing_agents) > 1:
-                        self._logger.debug(f"Added tasks over edge : {task.predicate.contributing_agents}")
+                        self.__LOGGER.debug(f"Added tasks over edge : {task.predicate.contributing_agents}")
                     else:
-                        self._logger.debug(f"Added self task : {[task.predicate.contributing_agents[0],task.predicate.contributing_agents[0]]}")
+                        self.__LOGGER.debug(f"Added self task : {[task.predicate.contributing_agents[0],task.predicate.contributing_agents[0]]}")
         else:
             raise Exception("please enter a valid STL task object or a a list of StlTask objects")
         
@@ -377,7 +236,7 @@ class STLController(Publisher):
                 new_barriers = create_linear_barriers_from_task( task = task,
                                                                      initial_conditions  = initial_conditions,
                                                                      t_init               = self._initialization_time,
-                                                                     maximum_control_input_norm = self._dynamical_model.maximum_expressible_speed)
+                                                                     maximum_control_input_norm = self._dynamical_model_math.maximum_expressible_speed)
                 
                 if self._unique_identifier == task.predicate.source_agent:
                     barriers = barriers_storage.setdefault(task.predicate.target_agent,[]) 
@@ -391,7 +250,7 @@ class STLController(Publisher):
                 new_barriers =  create_linear_barriers_from_task( task = task,
                                                                    initial_conditions         = initial_conditions,
                                                                    t_init                     = self._initialization_time,
-                                                                   maximum_control_input_norm = self._dynamical_model.maximum_expressible_speed)
+                                                                   maximum_control_input_norm = self._dynamical_model_math.maximum_expressible_speed)
                 barriers = barriers_storage.setdefault(self._unique_identifier,[])
                 barriers += new_barriers 
                  
@@ -430,7 +289,7 @@ class STLController(Publisher):
                                                               x_target = params["state"][barrier._target_agent],
                                                               t        =  params["time"])      # time derivative of the barrier computed at time params["time"]
             
-            g_xi            = self._dynamical_model.g_fun(params["state"][self._unique_identifier]) # g(x) function of the agent (x_dot = f(x) + g(x)u
+            g_xi            = self._dynamical_model_math.g_fun(params["state"][self._unique_identifier]) # g(x) function of the agent (x_dot = f(x) + g(x)u
             
             barrier_value   = barrier.compute(x_source = params["state"][barrier._source_agent],
                                               x_target = params["state"][barrier._target_agent],
@@ -467,7 +326,7 @@ class STLController(Publisher):
             
             gamma_dot = barrier.time_derivative_at_time(x=params["state"][self._unique_identifier],
                                                         t=params["time"])
-            g_xi = self._dynamical_model.g_fun(params["state"][self._unique_identifier])
+            g_xi = self._dynamical_model_math.g_fun(params["state"][self._unique_identifier])
             
             barrier_value = barrier.compute(x=params["state"][self._unique_identifier],
                                             t=params["time"])
@@ -500,8 +359,8 @@ class STLController(Publisher):
     
     def get_control_input_constraints(self) -> list[ca.MX]:
         
-        A_u = self._dynamical_model.input_constraints_A
-        b_u = self._dynamical_model.input_constraints_b
+        A_u = self._dynamical_model_math.input_constraints_A
+        b_u = self._dynamical_model_math.input_constraints_b
         
         return [A_u @ self._control_input_var - b_u*self._params["gamma"]]
     
@@ -521,10 +380,10 @@ class STLController(Publisher):
                                          current_time  : float):
         
         if self._is_leaf:
-            self._logger.debug(f"agent is leaf, no need to compute gammas...")
+            self.__LOGGER.debug(f"agent is leaf, no need to compute gammas...")
             return 
             
-        self._logger.debug(f"Trying to compute gamma tilde values...")
+        self.__LOGGER.debug(f"Trying to compute gamma tilde values...")
         
         for neighbour in self._leader_neighbours:
             barrier = self._barrier_functions[neighbour]
@@ -567,10 +426,10 @@ class STLController(Publisher):
         barrier_value   = barrier.compute(x_source = agents_states[barrier.source_agent],
                                           x_target = agents_states[barrier.target_agent],
                                           t        = current_time)
-        self._logger.debug(f"Gradient for the barrier {(barrier.source_agent,barrier.target_agent)} :  {nabla_xi}")    
-        self._logger.debug(f"Value of the barrier {(barrier.source_agent,barrier.target_agent)} : {barrier_value}")
-        self._logger.debug(f"Current state of the agent {self._unique_identifier} : {current_agent_state}")
-        self._logger.debug(f"Current state of neighbour {neighbour_id} : {agents_states[neighbour_id]}")
+        self.__LOGGER.debug(f"Gradient for the barrier {(barrier.source_agent,barrier.target_agent)} :  {nabla_xi}")    
+        self.__LOGGER.debug(f"Value of the barrier {(barrier.source_agent,barrier.target_agent)} : {barrier_value}")
+        self.__LOGGER.debug(f"Current state of the agent {self._unique_identifier} : {current_agent_state}")
+        self.__LOGGER.debug(f"Current state of neighbour {neighbour_id} : {agents_states[neighbour_id]}")
         
         
         if np.linalg.norm(nabla_xi) <= 1E-6 : # case when the gradient is practically zero
@@ -579,8 +438,8 @@ class STLController(Publisher):
             return gamma_tilde
         
         else : # compute the gamma tilde value
-            g_value : np.ndarray = self._dynamical_model.g_fun(current_agent_state).full()
-            f_value : np.ndarray = self._dynamical_model.f_fun(current_agent_state).full()
+            g_value : np.ndarray = self._dynamical_model_math.g_fun(current_agent_state).full()
+            f_value : np.ndarray = self._dynamical_model_math.f_fun(current_agent_state).full()
             
             
             # this can be parallelised for each of the barrier you are a follower of
@@ -594,7 +453,7 @@ class STLController(Publisher):
                                                     x_target = agents_states[barrier.target_agent],
                                                     t        = current_time)
             
-            self._logger.debug(f"value of the barrier is {barrier_value}")
+            self.__LOGGER.debug(f"value of the barrier is {barrier_value}")
             
             alpha_barrier_value = self._alpha_fun(barrier_value)
             time_derivative     = barrier.time_derivative_at_time(x_source = agents_states[barrier.source_agent],
@@ -602,13 +461,13 @@ class STLController(Publisher):
                                                                     t        = current_time)
             
             if alpha_barrier_value < 0 :
-                self._logger.warning(f"Barrier value is negative : {barrier_value}.")
+                self.__LOGGER.warning(f"Barrier value is negative : {barrier_value}.")
             
             zeta        = alpha_barrier_value + time_derivative   
             gamma_tilde =  -(neighbour_best_impact + zeta + Lf) / ( Lg @ worse_input) # compute the gamma value    
             
             if gamma_tilde<= 0.:
-                self._logger.info(f"Registered a gamma tilde less than zero: the alpha(barrier) is {alpha_barrier_value}," +
+                self.__LOGGER.info(f"Registered a gamma tilde less than zero: the alpha(barrier) is {alpha_barrier_value}," +
                                                                               f"the time derivative is {time_derivative}," +
                                                                               f"the best impact is {neighbour_best_impact}," +
                                                                               f"the value of the barrier is {barrier_value}," +
@@ -621,7 +480,7 @@ class STLController(Publisher):
     
         
     def compute_gamma(self) :
-        self._logger.debug(f"Computing gammas")
+        self.__LOGGER.debug(f"Computing gammas")
         
         # Now it is the time to check if you have all the available information
         if self._is_leaf : 
@@ -630,14 +489,14 @@ class STLController(Publisher):
         if self.is_ready_to_compute_gamma :
             self._gamma = min( list(self._gamma_tilde.values()) + [1]) # take the minimum of the gamma tilde values
             if self._gamma<=0 :
-                self._logger.info(f"The computed gamma value is negative with value {self._gamma}. The gamma value is set at zero.")
+                self.__LOGGER.info(f"The computed gamma value is negative with value {self._gamma}. The gamma value is set at zero.")
                 self._gamma = 0
         
-        self._logger.debug(f"Gamma value is {self._gamma}")
+        self.__LOGGER.debug(f"Gamma value is {self._gamma}")
         
     def compute_best_impact_for_follower(self,agents_states:dict[int,np.ndarray],current_time: float):
         
-        self._logger.debug(f"Computing and notifying best impact for follower {self._follower_neighbour}")
+        self.__LOGGER.debug(f"Computing and notifying best impact for follower {self._follower_neighbour}")
         # If you have no follower neighbour then you can just end the process
         if self._follower_neighbour == None :
             return
@@ -653,8 +512,8 @@ class STLController(Publisher):
             nabla_xi        = nabla_xi.full()
         
         nabla_xi             = nabla_xi.flatten()
-        g_value : np.ndarray = self._dynamical_model.g_fun(current_agent_state).full()
-        f_value : np.ndarray = self._dynamical_model.f_fun(current_agent_state).full()    
+        g_value : np.ndarray = self._dynamical_model_math.g_fun(current_agent_state).full()
+        f_value : np.ndarray = self._dynamical_model_math.f_fun(current_agent_state).full()    
 
         # this can be parallelised for each of the barrier you are a follower of
         Lg = nabla_xi @ g_value
@@ -665,34 +524,45 @@ class STLController(Publisher):
         else :
             best_impact = self._best_impact_solver.compute(Lg).full()
             self._best_impact_on_follower   = Lf + Lg @ best_impact*self._gamma  
+         
         
-        event = "best_impact"
-        self.notify(event)  
+        message = ControlMessage(type = ControlMessageType.BEST_IMPACT,
+                                 time_stamp = current_time,
+                                 value = self._best_impact_on_follower,
+                                 sender_id=self._unique_identifier,
+                                 receiver_id = self._follower_neighbour)
+        
+        self._agent.communication_sender.enqueue_messages(message)
+        self._agent.communication_sender.async_loop_lock.trigger()
         
     
     def compute_worse_impact_for_leaders(self):
         for leader in self._leader_neighbours:
             worse_impact = self._worse_impact_on_leaders_stored_lambda[leader](self._gamma)
             self._worse_impact_on_leaders[leader] = worse_impact
+            message = ControlMessage(type       = ControlMessageType.WORSE_IMPACT,
+                                    time_stamp  = time.time(),
+                                    value       = worse_impact,
+                                    sender_id   = self._unique_identifier,
+                                    receiver_id = leader)
+            self._agent.communication_sender.enqueue_messages(message)
+        
+        self._agent.communication_sender.async_loop_lock.trigger()
             
-        event = "worse_impact"
-        self.notify(event)
+            
         
     
     def compute_control_input(self, current_states:dict[int,np.ndarray], current_time: float) -> np.ndarray:
         
-        
-        
-        
         # gamma equal to zero just stand by
         if self._gamma == 0:
-            self._logger.info(f"Value of gamma is zero. stand by")
+            self.__LOGGER.info(f"Value of gamma is zero. stand by")
             self.flush_current_information()
             return np.zeros((2,1))
         
         # to be adapted when dealing with real time implementation
         if (self._worse_impact_from_follower == None) and (self._follower_neighbour != None):
-            self._logger.error(f"The worse impact from the follower is not computed. Follower neighbour is {self._follower_neighbour}")
+            self.__LOGGER.error(f"The worse impact from the follower is not computed. Follower neighbour is {self._follower_neighbour}")
             raise RuntimeError(f"The worse impact from the follower is not computed.Follower neighbour is {self._follower_neighbour}")
         
         
@@ -713,8 +583,8 @@ class STLController(Publisher):
                 self._warm_start_sol   = sol
         
             except Exception as e1:
-                self._logger.info(f"Primary controller did not find a solution. Stand by.... The value of gamma is : {self._gamma}")
-                # self._logger.error(e1, exc_info=True)
+                self.__LOGGER.info(f"Primary controller did not find a solution. Stand by.... The value of gamma is : {self._gamma}")
+                # self.__LOGGER.error(e1, exc_info=True)
                 failed_computation = True
                 
         else :
@@ -725,8 +595,8 @@ class STLController(Publisher):
                 self._warm_start_sol   = sol
         
             except Exception as e2:
-                self._logger.info(f"Primary controller did not find a solution. Stand by.... The value of gamma is : {self._gamma}")
-                # self._logger.error(e2, exc_info=True)
+                self.__LOGGER.info(f"Primary controller did not find a solution. Stand by.... The value of gamma is : {self._gamma}")
+                # self.__LOGGER.error(e2, exc_info=True)
                 failed_computation = True
         
         # flush data.
@@ -759,28 +629,132 @@ class STLController(Publisher):
         
         return closest_state
     
-    def on_best_impact(self,unique_identifier:int,best_impact:float) -> None:
-        """The publisher agent will puts its unique_identifier here and update the dictionary of this object"""
-        self._logger.debug(f"Agent {self._unique_identifier}  listening best impact from agent {unique_identifier}. Value is {best_impact}")
-        self._best_impact_from_leaders[unique_identifier] = best_impact
     
-    def on_worse_impact(self,unique_identifier:int,worse_impacts_dict:dict[int,float]) -> None:
-        """The publisher agent will puts its unique_identifier here and update the dictionary of this object"""
-        self._logger.debug(f"Agent {self._unique_identifier}  listening worse impact from agent {unique_identifier} with value {worse_impacts_dict[self._unique_identifier]}")
-        self._worse_impact_from_follower = worse_impacts_dict[self._unique_identifier] # you take the worse impact from the follower agent that is referenced to your unique_identifier
+    # todo: set up these functions correctly
+    def initialise_component(
+        self,
+        agent: "Agent",
+        initial_awareness_database: MultiAgentAwarenessVector,
+        initial_knowledge_database: MultiAgentKnowledgeDatabase,
+    ):
+        
+        super().initialise_component(agent, initial_awareness_database, initial_knowledge_database)
+        
+        # extract position
+        initial_conditions = {unique_identifier : initial_awareness_database[unique_identifier].state[:2] for unique_identifier in initial_awareness_database.keys()}
+        stl_tasks          = initial_knowledge_database[self._unique_identifier]["stl_tasks"]
+        initial_time       = initial_knowledge_database[self._unique_identifier]["initial_time"]
+        leadership_tokens  = initial_knowledge_database[self._unique_identifier]["leadership_tokens"]
+        
+        """Used to set up the controller. The main objective here it is to transform the tasks into barriers and then to initialise the constraints for the optimization problem"""
+        self.__LOGGER.debug(f"Setting up the controller")
+        
+        # Save all the leader neighbours
+        self.__LOGGER.debug(f"Recorded leadreship tokens : {leadership_tokens}")
+        self._leader_neighbours , self._follower_neighbour = self.get_leader_and_follower_neighbours(leadership_tokens)
+        self._best_impact_from_leaders = {unique_identifier : None for unique_identifier in self._leader_neighbours} # initialise the best impact from leaders
+        self._task_neighbours_id       = self._leader_neighbours + [self._follower_neighbour] if self._follower_neighbour is not None else self._leader_neighbours
+     
+        self._initialization_time = initial_time  # time at which the problem is initialized
+        self._params              = self.get_optimization_parameters_dictionary(self._task_neighbours_id)   
+        self._gamma_tilde         = {unique_identifier : None for unique_identifier in self._leader_neighbours} # initialise the gamma tilde values 
+
+     
+        # add the tasks to the controller
+        try :
+            stl_tasks = iter(stl_tasks)
+        except TypeError:
+            raise TypeError("stl_tasks should be an iterable of StlTask objects")
+        stl_tasks = filter_tasks_by_time_limit(stl_tasks,initial_time,initial_time + self._look_ahead_time_window)
+        for task in stl_tasks:
+            self.check_task(task) # raises an error in case the task is not correct
+            self._stl_tasks.append(task)
+        
+        # now get all the constraints for the optimization problem
+        self._barrier_constraints      = self.generate_barrier_constraints(self._stl_tasks,initial_conditions)
+        slack_constraints              = self.get_slack_constraints()
+        control_input_constraints      = self.get_control_input_constraints()
+        collision_avoidance_constraint = self.collision_avoidance_constraint()
+        
+        self._optimizer.subject_to(ca.vertcat(*self._barrier_constraints) <= 0)
+        self._optimizer.subject_to(ca.vertcat(*control_input_constraints) <= 0)
+        # self._optimizer.subject_to(collision_avoidance_constraint <= 0) #todo! : check here when you can add the collision avoidance constraint again
+        if len(slack_constraints) != 0:
+            self._optimizer.subject_to(ca.vertcat(*slack_constraints) <= 0)
+        
+        # set up cost
+        cost  = self._control_input_var.T @  self._control_input_var # classic quadratic cost (work for simple integrator types of system)
+        cost += ca.vertcat(*self._slack_vars).T @ ca.vertcat(*self._slack_vars) # add slack variables to the cost
+        
+        
+        p_opts = dict(print_time=False, 
+                        verbose=False,
+                        expand=True)
+
+        
+        # Solver options
+        s_opts = dict(
+            print_level=0,
+            tol=1e-6,
+            max_iter=1000,
+            )
+        
+        self._optimizer.minimize(cost)
+        self._optimizer.solver("ipopt",p_opts,s_opts)
+        self.__LOGGER.debug(f"Recorded Follower neighbour : {self._follower_neighbour}")
+        
     
-       
-    def notify(self,event:str) ->None:
-        """This function is used then by the conroller to update the information of the neighbours."""
+
+    def _compute(self) -> tuple[np.ndarray, TimeSeries]:
+        """
+        This objective of this controller it is to pass an high level velocity command to 
+        the agent. The agent has to wait to have received the best impact from the follower agent before computing its control input.
+        So at each iteration this component only sends message to the other agents until it is ready to send an updated velocity command to the low level controller. 
+
+
+        Returns
+        -------
+            - Most recent control input 
+            - empty time series
+        """
         
-        if event not in self._subscribers :
-            raise RuntimeError(f"the event {event} is not subscribed by the agent {self._unique_identifier}")
+        agents_states = {unique_identifier : self._agent.self_awareness.state[:2] for unique_identifier in self._agent.self_awareness.state.keys()}
+        current_time  =  time.ctime() - self._initialization_time
         
-        elif event == "best_impact" :
-            """send the value of the best impact here"""
-            for callback in self._subscribers[event] : # thesre is going to be oinly one 
-                callback(self._unique_identifier, self._best_impact_on_follower)
+        if not self.is_ready_to_compute_gamma:
+            self.compute_gamma_tilde_values(current_time =  current_time, 
+                                            agents_state = agents_states)
         
-        elif event == "worse_impact" :
-            for callback in self._subscribers[event]:
-                callback(self._unique_identifier,self._worse_impact_on_leaders)
+        if self.is_ready_to_compute_gamma and (not self._has_already_computed_gamma):
+            self.compute_gamma()
+            self.compute_best_impact_for_follower(agents_states = agents_states,
+                                              current_time  = current_time)
+            self.compute_worse_impact_for_leaders()
+            self._has_already_computed_gamma = True
+        
+        
+        if self.has_received_worse_impact_from_follower:
+            self._has_already_computed_gamma = False
+            self._last_velocity_input = self.compute_control_input(agents_states,current_time) # update control input
+            
+        
+        return (self._last_velocity_input,TimeSeries())
+        
+
+    def _update(self, control_input_and_intent: tuple[np.ndarray, TimeSeries]):
+        """
+        Notify low level controller of new control input and store new intent in awareness vector
+
+        Args
+        ----
+        control_input:
+            New control input to apply to the agent's model
+        intent:
+            New intent to store in the agent's awareness vector
+        """
+        control_input, intent = control_input_and_intent
+        
+        if control_input is not None:
+            # notify the low-level controller of a new control input
+            self._notify("new_control_input",control_input)
+        self._agent.self_awareness.intent = intent # not really doing anything but kept here

@@ -2,13 +2,13 @@ import numpy as np
 import casadi as ca
 from abc import ABC, abstractmethod
 
-from stl.dynamics  import DynamicalModel
+from stl.dynamics  import MathematicalDynamicalModel
 from .utils import NoStdStreams
 
 
 class ImpactSolver(ABC):
     
-    def __init__(self, model : DynamicalModel) -> None :
+    def __init__(self, model : MathematicalDynamicalModel) -> None :
             
         self._model = model
         self.solver = None
@@ -20,7 +20,7 @@ class ImpactSolver(ABC):
     
 
 class BestImpactSolver(ImpactSolver):
-    def __init__(self, model : DynamicalModel) -> None:
+    def __init__(self, model : MathematicalDynamicalModel) -> None:
         super().__init__(model)
 
         A_u = model.input_constraints_A
@@ -38,7 +38,7 @@ class BestImpactSolver(ImpactSolver):
         
 
 class WorseImpactSolver(ImpactSolver):
-    def __init__(self, model : DynamicalModel) -> None :
+    def __init__(self, model : MathematicalDynamicalModel) -> None :
         
         super().__init__(model)
         

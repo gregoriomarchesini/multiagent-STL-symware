@@ -59,7 +59,7 @@ def get_id_from_name(name:str)-> UniqueIdentifier|None:
 
 
     
-class DynamicalModel(ABC):
+class MathematicalDynamicalModel(ABC):
     """
                                                                                   .
     DynamicalModel - Abstract class to define a control affine dynamical system in the form   x = f(x) + g(x)u
@@ -436,7 +436,7 @@ class DynamicalModel(ABC):
 
 
     
-class DifferentialDrive(DynamicalModel):
+class DifferentialDrive(MathematicalDynamicalModel):
     """
     Class Differential Drive - A simple model of a differential drive robot.
     
@@ -538,7 +538,7 @@ class DifferentialDrive(DynamicalModel):
     
 
         
-class SingleIntegrator2D(DynamicalModel):
+class SingleIntegrator2D(MathematicalDynamicalModel):
     """
     Class Single Integrator
     
@@ -612,7 +612,7 @@ class SingleIntegrator2D(DynamicalModel):
 
 
 
-class DoubleIntegrator2D(DynamicalModel):
+class DoubleIntegrator2D(MathematicalDynamicalModel):
     """
     Class Single Integrator
     

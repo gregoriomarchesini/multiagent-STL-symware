@@ -33,21 +33,20 @@ from symaware.base.data import (
     TimeSeries,
 )
 
-from kth.dynamical_model import (
-        DroneCf2xModel,
-        DroneModel,
-        DroneRacerModel,
-    )
+from kth.pybullet_env.dynamical_model import (DroneCf2xModel,
+                                             DroneModel,
+                                             DroneRacerModel,
+                                             )
 
-from kth.entities import (
-     DroneCf2pEntity,
-     DroneCf2xEntity,
-     DroneRacerEntity,
-
-    )   
-from kth.environment import (
+from kth.pybullet_env.entities import ( DroneCf2pEntity,
+                                        DroneCf2xEntity,
+                                        DroneRacerEntity)
+ 
+from kth.pybullet_env.environment import (
      Environment,
 )
+
+
 
 class MyKnowledgeDatabase(KnowledgeDatabase):
     pass
@@ -63,7 +62,6 @@ class MyPerceptionSystem(PerceptionSystem):
         Discard the information about any other agent.
         Only return the information related to the agent itself.
         """
-        #! Ernesto: non funziona
         return {self._agent_id: StateObservation(self._agent_id, self._env.get_agent_state(self.agent_id))}
     
 

@@ -31,80 +31,24 @@ from symaware.base import (
     Agent
 )
 
-try:
-    from symaware.simulators.pybullet import (
-        Environment,
-        DroneRacerEntity,
-        DroneCf2pEntity,
-        DroneCf2xEntity,
-        DroneRacerModel,
-        DroneCf2xModel,
-        DroneModel,
-    )
-except ImportError as e:
-    raise ImportError(
-        "symaware-pybullet non found. "
-        "Try running `pip install symaware-pybullet` or `pip install symaware[simulators]`"
-    ) from e
+from kth.pybullet_env.environment import Environment
+from kth.pybullet_env.dynamical_model import DroneCf2xModel
+from kth.components.support_components import Network, ControlMessageType, ControlMessage
+from kth.data.data import (ControlMessage, ControlMessageType)
+from kth.components.high_level_controller import STLController
 
 
+class StateOnlyPerceptionSystem(PerceptionSystem):
+    """
+    Unfortunately, this perception system is very limited, and can only perceive the state of the agent itself.
+    """
 
-
-class LeadershipToken(Enum) :
-    """Enumeration class for the three types of edge leadership tokens"""
-    LEADER    = 1
-    FOLLOWER  = 2
-    UNDEFINED = 0
-    
-
-
-@dataclass(frozen=True)
-class StateMessage(Message):
-    """A message that contains the state of an agent"""
-    state: np.ndarray
-    time_stamp: float = 0.0
-
-
-# dictionary
-class STLKnowledgeDatabase(KnowledgeDatabase):
-    stl_tasks          : list[StlTask]              # stores the task for an agent in a list
-    leadership_tokens  : dict[int,LeadershipToken]                       # stores the leadership tokens for the agent
-    
-    
-@dataclass(frozen=True)
-class StateMessage(Message):
-    """A message that contains the state of an agent"""
-    state: np.ndarray
-    time_stamp: float = 0.0
-    
-    
-
-class ControlMessageType(Enum) :
-    BEST_IMPACT            = 2
-    WORSE_IMPACT           = 3
-    MAX_EXPRESSED_VELOCITY = 4
-    
-    
-@dataclass(frozen=True)
-class ControlMessage(Message):
-    """A message that contains the state of an agent"""
-    type      : int
-    time_stamp: float = 0.0
-    value     : float = 0.0
-
-
-class MyPerceptionSystem(PerceptionSystem):
-    
-    def __init__(self, agent_id: int, environment: Environment, async_loop_lock: "Tasynclooplock | None" = None):
-        
-        super().__init__(agent_id,environment, async_loop_lock)
-        self.current_agent_velocity = np.zeros(2)
-        
     def _compute(self) -> dict[Identifier, StateObservation]:
-        
-        # update velocity of 
-        self.current_agent_velocity = self._env.get_agent_state(self._agent_id)[7:9] # state of agent is [x,y,z,q1,q2,q3,q4,vx,vy,vz,wx,wy,wz]. So this takes vx,vy
-        return   {agent_id : state[:2] for agent_id, state in  self._env.agent_states} # we only need the x-y position of the agents
+        """
+        Discard the information about any other agent.
+        Only return the information related to the agent itself.
+        """
+        return {self._agent_id: StateObservation(self._agent_id, self._env.get_agent_state(self.agent_id))}
 
     
 
@@ -166,7 +110,7 @@ class Receiver(CommunicationReceiver[DefaultAsyncLoopLock]):
                 "Agent %d: Received the message %s from agent %d", self.agent_id, message, message.sender_id
             )
             
-            controller = self._agent.controllers[0] # get reference to the controller of the agent
+            controller : "STLController"= self._agent.controllers[0] # get reference to the controller of the agent
             control_neighbours = controller._task_neighbours_id
             if not (message.sender_id in control_neighbours):
                 return tuple()
@@ -178,8 +122,9 @@ class Receiver(CommunicationReceiver[DefaultAsyncLoopLock]):
 
     def _update(self, message: "ControlMessage | None"):
         """Here we get the reference to controller in the agent and we make the modifications that we need"""
-        controller = self._agent.controllers[0] # get reference to the controller of the agent
+        controller : "STLController" = self._agent.controllers[0] # get reference to the controller of the agent
         
+        # 
         if message.type == ControlMessageType.BEST_IMPACT :
             controller._best_impact_from_leaders[message.sender_id] = message.value
         elif message.type == ControlMessageType.WORSE_IMPACT :
@@ -207,12 +152,12 @@ class VelocityController(Controller):
         # dynamics along the x and y axis
         # .
         # v_x = g*theta
-        # .
+        #   ..
         # theta = 1/I_y * tau_theta
         #
         # Hence
-        #  ..
-        #  v_x = g/I_y * tau_theta -> simple second order system with input tau_theta
+        # ...              
+        #  v_x = g/I_y * tau_theta -> third order system
         
         # They are the same value for these two axes
         
@@ -264,6 +209,16 @@ class VelocityController(Controller):
         self._Ki_v = 1
         
     
+    
+    def on_new_reference(self, new_reference: np.ndarray):
+        """
+        Set the new reference for the controller.
+        The reference is a 3D vector with the x, y, and z components of the velocity.
+        """
+        self._vx_ref = new_reference[0]
+        self._vy_ref = new_reference[1]
+        
+        
     def initialise_component(
             self,
             agent: "Agent",
@@ -273,12 +228,6 @@ class VelocityController(Controller):
         
         self._dynamical_model = agent.model
         super().initialise_component(agent, initial_awareness_database, initial_knowledge_database)
-        
-        try :
-            I_yy = self._agent.model.iyy
-            I_xx = self._agent.model.ixx
-        except Exception as e:
-            raise RuntimeError("The agent model does not have the inertia values. Please check the model of the agent to be a drone")
         
         
  
@@ -326,18 +275,8 @@ class VelocityController(Controller):
         self._fx_prev = fx
         self._fy_prev = fy
         
-        
-        
-        
-        print("current_vx",current_vx)
-        print("current_vy",current_vy)
-        print("target_vx",self._vx_ref)
-        print("target_vy",self._vy_ref)
-        print(self._fx_dot)
-        model : DroneCf2xModel = self._agent.model
-        
         forces = np.array([fx,fy,self._fx_dot_dot,self._fy_dot_dot]) # !todo: nicely change the framwork to get forces instead of RPM
-        # check if you want to print that force is equal to gravity
+
         return forces, TimeSeries() # the dynamical model step function was modified to accept forces
     
         
@@ -349,3 +288,5 @@ class Network:
     task_network        : nx.Graph # edges only present if there is a task
     full_network        : nx.Graph # complete graph of the system (all to all edges)
     message_queue       : dict[Identifier, asyncio.Queue] = {} # Used to store the messages for each agent
+    
+    

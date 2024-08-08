@@ -33,7 +33,7 @@ import networkx as nx
 from stlddec.graphs     import CommunicationGraph,TaskGraph
 from stlcont.controller import STLController, get_logger
 from stlcont.utils      import token_passing_algorithm, LeadershipToken
-from stl.dynamics       import DynamicalModel,SingleIntegrator2D
+from stl.dynamics       import MathematicalDynamicalModel,SingleIntegrator2D
 
 
 plt.rcParams["figure.figsize"] = (3.425, 2.325)
@@ -45,7 +45,7 @@ class MultiAgentSystem:
     task_graph          : TaskGraph
     communication_graph : CommunicationGraph
     agents_states       : dict[int,np.ndarray]
-    agents_models       : dict[int,DynamicalModel]
+    agents_models       : dict[int,MathematicalDynamicalModel]
     current_time        : float = 0.
     
     def __post_init__(self):
@@ -77,7 +77,7 @@ def simulate_agents(multi_agent_system : MultiAgentSystem, final_time:float, log
     
     print("============================ Starting Simulation =================================")
     state_history   = {unique_identifier : {} for unique_identifier in multi_agent_system.agents_states.keys()}
-    time_step       = DynamicalModel._time_step
+    time_step       = MathematicalDynamicalModel._time_step
     number_of_steps = int(final_time/time_step)
     if look_ahead_time == float("inf"):
         look_ahead_time = final_time

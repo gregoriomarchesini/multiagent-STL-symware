@@ -495,21 +495,21 @@ class DroneModel(DynamicalModel):
                     flags=p.LINK_FRAME,
                 )
 
-    def step(self):
-        """Advances the environment by one simulation step."""
-        forces = np.array(self._control_input**2) * self.kf
-        _, _, z_torque = self._get_torque(self._control_input, forces)
-        for i in range(4):
-            p.applyExternalForce(
-                self._entity_id,
-                i,
-                forceObj=[0, 0, forces[i]],
-                posObj=[0, 0, 0],
-                flags=p.LINK_FRAME,
-            )
-        p.applyExternalTorque(self._entity_id, 4, torqueObj=[0, 0, z_torque], flags=p.LINK_FRAME)
+    # def step(self):
+    #     """Advances the environment by one simulation step."""
+    #     forces = np.array(self._control_input**2) * self.kf
+    #     _, _, z_torque = self._get_torque(self._control_input, forces)
+    #     for i in range(4):
+    #         p.applyExternalForce(
+    #             self._entity_id,
+    #             i,
+    #             forceObj=[0, 0, forces[i]],
+    #             posObj=[0, 0, 0],
+    #             flags=p.LINK_FRAME,
+    #         )
+    #     p.applyExternalTorque(self._entity_id, 4, torqueObj=[0, 0, z_torque], flags=p.LINK_FRAME)
 
-        self._update_kinematic_info()
+    #     self._update_kinematic_info()
         
     def step(self):
         """Advances the environment by one simulation step."""
