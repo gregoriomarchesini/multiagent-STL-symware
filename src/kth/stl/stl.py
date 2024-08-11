@@ -797,6 +797,7 @@ class IndependentLinearBarrierFunction(BarrierFunction):
         return self._gamma_function.compute_gradient(t)*self._switch_function.compute(t) # the time derivative of the barrier function is the time derivative of the gamma function
 
 
+BIG_NUMBER = 1E3
 class IndependentSmoothMinBarrierFunction(BarrierFunction):
     def __init__(self, list_of_barrier_functions: list[IndependentLinearBarrierFunction],eta:float = 1) -> None:
         self._list_of_barrier_functions = list_of_barrier_functions
@@ -817,16 +818,15 @@ class IndependentSmoothMinBarrierFunction(BarrierFunction):
         sum = 0
         x = ca.MX.sym("x",2) # assume that the state dimension is 2 for now 
         t = ca.MX.sym("t")
-        big_number = 1E2
         
         cumulative_switch = 0
         for barrier_function in self._list_of_barrier_functions :
             cumulative_switch += barrier_function._switch_function.compute(t) # to set the barrier at zero when all the barriers have been switched off
-            sum += ca.exp(-self._eta*barrier_function.compute(x,t) + (1.-barrier_function._switch_function.compute(t))*big_number/self._eta)  
+            sum += ca.exp(-self._eta*(barrier_function.compute(x,t) + (1. - barrier_function._switch_function.compute(t))*BIG_NUMBER/self._eta))  
             # ^^ each terms becomes very big when the switch function is off and the gradient of that component will be zero because the linear barrier component sets the gradient to zero (using the switch function)
         
         smooth_min_sym      = -ca.log(sum)/self._eta
-        smooth_min_fun      = ca.Function("smooth_min",[x,t],[smooth_min_sym * ca.if_else(cumulative_switch>0. ,1.0,0.)])
+        smooth_min_fun      = ca.Function("smooth_min",[x,t],[smooth_min_sym * ca.if_else(cumulative_switch>0.,1.0,0.)])
         gradient_fun        = ca.Function("smooth_min_gradient",[x,t],[ca.jacobian(smooth_min_sym,x)])
         time_derivative_fun = ca.Function("smooth_min_time_derivative",[x,t],[ca.jacobian(smooth_min_sym,t)])
         
@@ -884,11 +884,10 @@ class CollaborativeSmoothMinBarrierFunction(BarrierFunction):
         x_target   = ca.MX.sym("x",2) # assume that the state dimension is 2 for now
         t          = ca.MX.sym("t")
         
-        big_number = 1E2
         cumulative_switch = 0
         for barrier_function in self._list_of_barrier_functions :
             cumulative_switch += barrier_function._switch_function.compute(t) # to set the barrier at zero when all the barriers have been switched off
-            sum += ca.exp(-self._eta* ( barrier_function.compute(x_source=x_source,x_target=x_target,t=t)  + (1.-barrier_function._switch_function.compute(t))*big_number/self._eta) ) 
+            sum += ca.exp(-self._eta* ( barrier_function.compute(x_source=x_source,x_target=x_target,t=t)  + (1. - barrier_function._switch_function.compute(t))*BIG_NUMBER/self._eta) ) 
             # ^^ each terms becomes very big when the switch function is off and the gradient of that component will be zero because the linear barrier component sets the gradient to zero (using the switch function)
         
         smooth_min_sym      = -1/self._eta * ca.log(sum)

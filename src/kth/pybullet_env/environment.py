@@ -6,6 +6,7 @@ import pybullet as p
 import pybullet_data
 from symaware.base.models import Environment as BaseEnvironment
 from symaware.base.utils import get_logger, log
+from symaware.base import TimeIntervalAsyncLoopLock
 
 from .entities import Entity
 
@@ -30,17 +31,26 @@ class Environment(BaseEnvironment):
     """
 
     __LOGGER = get_logger(__name__, "Pybullet.Environment")
+    _clock_time = 0.0
 
     def __init__(
         self,
+        sim_time_interval,
         real_time_interval: float = 0,
         connection_method: int = p.GUI,
-        async_loop_lock: "AsyncLoopLock | None" = None,
     ):
+        
+        
+        if sim_time_interval <= 0:
+            raise ValueError(f"Expected a strictly positive sim_time_interval, got {sim_time_interval}")
+        
+        self._sim_time_interval = sim_time_interval
+        async_loop_lock: "AsyncLoopLock | None" = TimeIntervalAsyncLoopLock(sim_time_interval) # this environment is only run at a fixed rate
         super().__init__(async_loop_lock)
         self._is_pybullet_initialized = False
         self._real_time_interval = real_time_interval
         self._connection_method = connection_method
+        self._coordinate_clock = CoordinatedClock()
 
     @property
     def use_real_time(self) -> bool:
@@ -77,7 +87,26 @@ class Environment(BaseEnvironment):
             entity.step()
         if not self.use_real_time:
             p.stepSimulation()
+        
+        self._coordinate_clock._step_time(self._sim_time_interval)
 
     def stop(self):
         self._is_pybullet_initialized = False
         p.disconnect()
+    
+    def get_coordinated_clock(self):
+        return self._coordinate_clock
+    
+
+
+
+class CoordinatedClock() :
+    def __init__(self) -> None:
+        self._clock_time = 0.0
+    
+    @property
+    def current_time(self):
+        return self._clock_time
+
+    def _step_time(self, time_interval):
+        self._clock_time += time_interval

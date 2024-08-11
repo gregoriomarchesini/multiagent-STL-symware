@@ -2,9 +2,8 @@ import numpy as np
 import casadi as ca
 from abc import ABC, abstractmethod
 
-from stl.dynamics  import MathematicalDynamicalModel
-from .utils import NoStdStreams
-
+from  kth.stl.dynamics  import MathematicalDynamicalModel
+from  kth.components.utils import NoStdStreams
 
 class ImpactSolver(ABC):
     

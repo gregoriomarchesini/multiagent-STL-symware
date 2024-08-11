@@ -1,8 +1,9 @@
 import numpy as np
 from   enum import Enum
 from   dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 from kth.stl.graphs import LeadershipToken
+from kth.pybullet_env.environment import CoordinatedClock
 
 from symaware.base import (
     KnowledgeDatabase,
@@ -12,6 +13,7 @@ from symaware.base import (
 if TYPE_CHECKING:
     from stl.stl import StlTask
     from kth.stl.graphs import LeadershipToken
+    from kth.pybullet_env.environment import CoordinatedClock
 
 
 
@@ -24,9 +26,11 @@ class StateMessage(Message):
 
 # dictionary
 class STLKnowledgeDatabase(KnowledgeDatabase):
-    stl_tasks          : list["StlTask"]              # stores the task for an agent in a list
-    leadership_tokens  : dict[int,"LeadershipToken"]    # stores the leadership tokens for the agent
-    initial_time       : float                        # stores the initial time of the agent
+    stl_tasks            : list["StlTask"]              # stores the task for an agent in a list
+    leadership_tokens    : dict[int,"LeadershipToken"]  # stores the leadership tokens for the agent
+    initial_time         : float                        # stores the initial time of the agent
+    coordinated_clock    : "CoordinatedClock"            # stores the clock time of the agent
+    
     
 @dataclass(frozen=True)
 class StateMessage(Message):
@@ -49,5 +53,3 @@ class ControlMessage(Message):
     time_stamp: float = 0.0
     value     : float = 0.0
     
-
-

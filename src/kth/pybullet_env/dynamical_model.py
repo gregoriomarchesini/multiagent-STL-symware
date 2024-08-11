@@ -215,7 +215,7 @@ class DroneModel(DynamicalModel):
         control_input:
             Initial control input of the agent. It also used to validate the size of future control inputs
         """
-        super().__init__(ID, control_input=np.ndarray(4))
+        super().__init__(ID, control_input=np.zeros((4)))
         self._urp_path = urp_path
         self._load_urdf_args()
         #### Compute constants #####################################
@@ -495,36 +495,22 @@ class DroneModel(DynamicalModel):
                     flags=p.LINK_FRAME,
                 )
 
-    # def step(self):
-    #     """Advances the environment by one simulation step."""
-    #     forces = np.array(self._control_input**2) * self.kf
-    #     _, _, z_torque = self._get_torque(self._control_input, forces)
-    #     for i in range(4):
-    #         p.applyExternalForce(
-    #             self._entity_id,
-    #             i,
-    #             forceObj=[0, 0, forces[i]],
-    #             posObj=[0, 0, 0],
-    #             flags=p.LINK_FRAME,
-    #         )
-    #     p.applyExternalTorque(self._entity_id, 4, torqueObj=[0, 0, z_torque], flags=p.LINK_FRAME)
-
-    #     self._update_kinematic_info()
-        
     def step(self):
         """Advances the environment by one simulation step."""
+        forces = np.array(self._control_input**2) * self.kf
+        _, _, z_torque = self._get_torque(self._control_input, forces)
+        for i in range(4):
+            p.applyExternalForce(
+                self._entity_id,
+                i,
+                forceObj=[0, 0, forces[i]],
+                posObj=[0, 0, 0],
+                flags=p.LINK_FRAME,
+            )
+        p.applyExternalTorque(self._entity_id, 4, torqueObj=[0, 0, z_torque], flags=p.LINK_FRAME)
+
         self._update_kinematic_info()
         
-        fx = self.control_input[0]
-        fy = self.control_input[1]
-        fx_dot_dot = self.control_input[2]
-        fy_dot_dot = self.control_input[3]
-        
-        #### Note: the base's velocity only stored and not used ####
-        p.applyExternalForce(self._entity_id, 4,forceObj=[fx, fy, self.gravity],posObj=[0, 0, 0],flags=p.LINK_FRAME)
-        p.applyExternalTorque(self._entity_id, 4, torqueObj=[fx_dot_dot/9.81*self.iyy, fy_dot_dot/9.81*self.ixx, 0], flags=p.LINK_FRAME)
-
-
 
     @abstractmethod
     def _get_torque(self, rpm: float, forces: np.ndarray) -> tuple[float, float, float]:
@@ -542,6 +528,11 @@ class DroneModel(DynamicalModel):
         """
         state = np.hstack([self.pos, self.quat, self.rpy, self.vel, self.ang_v])
         return state.reshape(16)
+
+
+
+
+
 
 
 class DroneRacerModel(DroneModel):
@@ -622,3 +613,113 @@ class DroneCf2pModel(DroneModel):
         x_torque = (forces[1] - forces[3]) * self.l
         y_torque = (-forces[0] + forces[2]) * self.l
         return x_torque, y_torque, z_torque
+
+
+
+
+class SingleIntegratorDroneModel(DynamicalModel):
+    __LOGGER = get_logger(__name__, "SingleIntegratorDroneModel")
+    
+    def __init__(self, ID: Identifier, debug: bool = False):
+        """
+        Is a simple integrator type of drone. Takes as a input the desired velocity and the second derivative of the acceleration to calculate the angular displacement fo the drone.
+
+        Args
+        ----
+        ID:
+            Identifier of the agent this model belongs to
+        control_input:
+            Initial control input of the agent. It also used to validate the size of future control inputs
+        """
+        super().__init__(ID, control_input=np.zeros((4)))
+        self._urp_path = URDF.DRONE_CF2X.urdf
+        self._load_urdf_args()
+        #### Compute constants #####################################
+        self.debug = debug
+        self.gravity = 9.81 * self.m
+        self.hover_rpm = np.sqrt(self.gravity / (4 * self.kf))
+        self.max_rpm = np.sqrt((self.thrust_to_weight_ratio * self.gravity) / (4 * self.kf))
+        self.max_thrust = 4 * self.kf * self.max_rpm**2
+        self.max_z_torque = 2 * self.km * self.max_rpm**2
+        self.gnd_eff_h_clip = (
+            0.25 * self.prop_radius * np.sqrt((15 * self.max_rpm**2 * self.kf * self.gnd_eff_coeff) / self.max_thrust)
+        )
+
+        self.pos: tuple[float, float, float]
+        self.quat: tuple[float, float, float, float]
+        self.vel: tuple[float, float, float]
+        self.ang_v: tuple[float, float, float]
+        self.rpy_rates: np.ndarray = np.zeros(3)
+        self._last_timestamp = time.time()
+
+
+    @property
+    def subinputs_dict(self) -> DroneModelSubinputs:
+        return {
+            "vx": self.control_input[0],
+            "vy": self.control_input[1],
+            "fx_dot_dot": self.control_input[2],
+            "fy_dot_dot": self.control_input[3],
+        }
+
+    def _load_urdf_args(self):
+        """Loads parameters from an URDF file.
+
+        This method is nothing more than a custom XML parser for the .urdf
+        files in folder `assets/`.
+
+        """
+        URDF_TREE = etxml.parse(self._urp_path).getroot()
+        self.m = float(URDF_TREE[1][0][1].attrib["value"])
+        self.l = float(URDF_TREE[0].attrib["arm"])
+        self.thrust_to_weight_ratio = float(URDF_TREE[0].attrib["thrust2weight"])
+        self.ixx = float(URDF_TREE[1][0][2].attrib["ixx"])
+        self.iyy = float(URDF_TREE[1][0][2].attrib["iyy"])
+        self.izz = float(URDF_TREE[1][0][2].attrib["izz"])
+        self.j = np.diag([self.ixx, self.iyy, self.izz])
+        self.j_inv = np.linalg.inv(self.j)
+        self.kf = float(URDF_TREE[0].attrib["kf"])
+        self.km = float(URDF_TREE[0].attrib["km"])
+        self.collision_h = float(URDF_TREE[1][2][1][0].attrib["length"])
+        self.collision_r = float(URDF_TREE[1][2][1][0].attrib["radius"])
+        self.collision_shape_offsets = [float(s) for s in URDF_TREE[1][2][0].attrib["xyz"].split(" ")]
+        self.collision_z_offset = self.collision_shape_offsets[2]
+        self.max_speed_kmh = float(URDF_TREE[0].attrib["max_speed_kmh"])
+        self.gnd_eff_coeff = float(URDF_TREE[0].attrib["gnd_eff_coeff"])
+        self.prop_radius = float(URDF_TREE[0].attrib["prop_radius"])
+        self.drag_coeff_xy = float(URDF_TREE[0].attrib["drag_coeff_xy"])
+        self.drag_coeff_z = float(URDF_TREE[0].attrib["drag_coeff_z"])
+        self.drag_coeff = np.array([self.drag_coeff_xy, self.drag_coeff_xy, self.drag_coeff_z])
+        self.dw_coeff_1 = float(URDF_TREE[0].attrib["dw_coeff_1"])
+        self.dw_coeff_2 = float(URDF_TREE[0].attrib["dw_coeff_2"])
+        self.dw_coeff_3 = float(URDF_TREE[0].attrib["dw_coeff_3"])
+        self.__LOGGER.info("loaded parameters from the drone's .urdf")
+        self.__LOGGER.info("m %f, L %f,", self.m, self.l)
+        self.__LOGGER.info("ixx %f, iyy %f, izz %f,", self.j[0, 0], self.j[1, 1], self.j[2, 2])
+        self.__LOGGER.info("kf %f, km %f,", self.kf, self.km)
+        self.__LOGGER.info("t2w %f, max_speed_kmh %f,", self.thrust_to_weight_ratio, self.max_speed_kmh)
+        self.__LOGGER.info("gnd_eff_coeff %f, prop_radius %f,", self.gnd_eff_coeff, self.prop_radius)
+        self.__LOGGER.info("drag_xy_coeff %f, drag_z_coeff %f,", self.drag_coeff[0], self.drag_coeff[2])
+        self.__LOGGER.info(
+            "dw_coeff_1 %f, dw_coeff_2 %f, dw_coeff_3 %f", self.dw_coeff_1, self.dw_coeff_2, self.dw_coeff_3
+        )
+
+    
+    def step(self):
+        """Advances the environment by one simulation step. The control input"""
+        
+        fx         = self.control_input[0]
+        fy         = self.control_input[1]
+        pitch      = self.control_input[2]
+        roll       = self.control_input[3]
+        
+        p.applyExternalForce(self._entity_id, 4,forceObj=[fx, fy, self.gravity],posObj=[0, 0, 0],flags=p.LINK_FRAME)
+        p.applyExternalTorque(self._entity_id, 4, torqueObj=[0, 0, 0], flags=p.LINK_FRAME)
+        
+    def _get_torque(self, rpm: float, forces: np.ndarray) -> tuple[float, float, float]:
+        """Just a place holder since the get torques function is not used anywhere in this model"""
+        pass
+
+
+
+
