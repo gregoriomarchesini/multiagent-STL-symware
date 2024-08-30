@@ -12,10 +12,11 @@ from symaware.base import (
 
 
 from kth.pybullet_env.dynamical_model import SingleIntegratorDroneModel
-from kth.pybullet_env.entities        import DroneCf2xEntity
+from kth.pybullet_env.entities        import DroneCf2xEntity,SphereEntity
 from kth.pybullet_env.environment     import Environment
 from kth.components.support_components import (VelocityController, 
-                                               StateOnlyPerceptionSystem,
+                                               PyBulletPerceptionSystem,
+                                               PyBulletCamera,
                                                Transmitter,
                                                Receiver)
 
@@ -34,62 +35,87 @@ task_graph = TaskGraph()
 # add tasks 
 
 # Independent task 
-polytope     = regular_2D_polytope(4,  1)
-predicate    = IndependentPredicate( polytope_0 = polytope, center = np.array([4.,4.]), agent_id =1 )
+polytope     = regular_2D_polytope(5,  0.8)
+predicate    = IndependentPredicate( polytope_0 = polytope, center = np.array([6.,6.]), agent_id =1 )
 task         = G(10,20) @ predicate
 task_graph.attach(task)
 
-polytope     = regular_2D_polytope(4,  2)
-predicate    = IndependentPredicate( polytope_0 = polytope, center = np.array([8.,8.]), agent_id =1 )
-task         = G(40,50) @ predicate
+
+## Collaborative task 
+polytope     = regular_2D_polytope(5, 0.8)
+predicate    = CollaborativePredicate( polytope_0 = polytope, center = np.array([0.,4.]),source_agent_id =1, target_agent_id =2 )
+task         = (F(10,20)+ G(0,40)) @ predicate
 task_graph.attach(task)
 
 ## Collaborative task 
-polytope     = regular_2D_polytope(6, 1)
-predicate    = CollaborativePredicate( polytope_0 = polytope, center = np.array([0.,0.]),source_agent_id =1, target_agent_id =2 )
-task         = G(18,100) @ predicate
+polytope     = regular_2D_polytope(5, 0.8)
+predicate    = CollaborativePredicate( polytope_0 = polytope, center = np.array([4.,0.]),source_agent_id =1, target_agent_id =3 )
+task         = (F(10,20) + G(0,40)) @ predicate
 task_graph.attach(task)
 
 ## Collaborative task 
-polytope     = regular_2D_polytope(6, 1)
-predicate    = CollaborativePredicate( polytope_0 = polytope, center = np.array([0.,0.]),source_agent_id =1, target_agent_id =3 )
-task         = G(18,100) @ predicate
+polytope     = regular_2D_polytope(5, 0.8)
+predicate    = CollaborativePredicate( polytope_0 = polytope, center = np.array([0.,-4.]),source_agent_id =1, target_agent_id =4 )
+task         = (F(10,20) + G(0,40)) @ predicate
 task_graph.attach(task)
-
 
 ## Collaborative task 
-polytope     = regular_2D_polytope(6, 1)
-predicate    = CollaborativePredicate( polytope_0 = polytope, center = np.array([3.,1.]),source_agent_id =1, target_agent_id =4 )
-task         = G(18,100) @ predicate
+polytope     = regular_2D_polytope(5, 0.8)
+predicate    = CollaborativePredicate( polytope_0 = polytope, center = np.array([-4.,0.]),source_agent_id =1, target_agent_id =5 )
+task         = (F(10,20)+ G(0,40)) @ predicate
 task_graph.attach(task)
-
 
 ## Collaborative task 
-polytope     = regular_2D_polytope(6, 1)
-predicate    = CollaborativePredicate( polytope_0 = polytope, center = np.array([-1.,3.]),source_agent_id =1, target_agent_id =5 )
-task         = G(18,100) @ predicate
+polytope     = regular_2D_polytope(5, 0.8)
+predicate    = CollaborativePredicate( polytope_0 = polytope, center = np.array([2.,2.]),source_agent_id =2, target_agent_id =6 )
+task         = (F(10,20)+ G(0,40)) @ predicate
 task_graph.attach(task)
 
+## Collaborative task 
+polytope     = regular_2D_polytope(5, 0.8)
+predicate    = CollaborativePredicate( polytope_0 = polytope, center = np.array([2.,2.]),source_agent_id =3, target_agent_id =7 )
+task         = (F(10,20)+ G(0,40)) @ predicate
+task_graph.attach(task)
+
+
+
+
+# ############################
+# ## Collaborative task 
+# polytope     = regular_2D_polytope(5, 1)
+# predicate    = CollaborativePredicate( polytope_0 = polytope, center = np.array([1.,1.]),source_agent_id =2, target_agent_id =3 )
+# task         = F(40,50) @ predicate
+# task_graph.attach(task)
+
+
+# ## Collaborative task 
+# polytope     = regular_2D_polytope(5, 1)
+# predicate    = CollaborativePredicate( polytope_0 = polytope, center = np.array([2.,1.]),source_agent_id =7, target_agent_id =6 )
+# task         = G(18,100) @ predicate
+# task_graph.attach(task)
 
 
 
 
 leadership_tokens    = token_passing_algorithm(task_graph, manually_set_leader=1)
 print_tokens(leadership_tokens)
-initial_agents_state = {1:np.array([2.,2.,1.,0.,0.,0.]),
-                        2:np.array([0.,0.,1.,0.,0.,0.]), 
-                        3:np.array([4.,0.,1.,0.,0.,0.]),
-                        4:np.array([0.,4.,1.,0.,0.,0.]),
-                        5:np.array([4.,4.,1.,0.,0.,0.])}
+initial_agents_state = {1:np.array([0.,0.,1.,0.,0.,0.  , 0.,0.,0., 0.,0.,0.]),
+                        2:np.array([-1.,0.8,1.,0.,0.,0., 0.,0.,0., 0.,0.,0.]), 
+                        3:np.array([-0.2,0.,1.,0.,0.,0., 0.,0.,0., 0.,0.,0.]),
+                        4:np.array([-0.5,0.5,1.,0.,0.,0, 0.,0.,0., 0.,0.,0.]),
+                        5:np.array([1.,-0.8,1.,0.,0.,0., 0.,0.,0., 0.,0.,0.]),
+                        6:np.array([1.,-2.8,1.,0.,0.,0., 0.,0.,0., 0.,0.,0.]),
+                        7:np.array([-1.,1.8,1.,0.,0.,0., 0.,0.,0., 0.,0.,0.])}
+
 max_velocity_agents = 5.
 entities: tuple[DroneCf2xEntity, ...] = (  DroneCf2xEntity(id=agent_id, model=SingleIntegratorDroneModel(ID=agent_id), position=initial_agents_state[agent_id][:3]) for agent_id in initial_agents_state.keys())
-
+target = SphereEntity(id=200, position=np.array([10.,10.,2.]), radius=1.0)
 def main():
     ###########################################################
     # 0. Parameters                                           #
     ###########################################################
     TIME_INTERVAL = 1./240.
-    LOG_LEVEL = "ERROR"
+    LOG_LEVEL     = "ERROR"
 
     initialize_logger(LOG_LEVEL)
     
@@ -103,7 +129,7 @@ def main():
     # For each agent in the simulation...                     #
     ###########################################################
     agent_coordinator = AgentCoordinator[STLKnowledgeDatabase](env)
-       
+    env.add_entities(target)
     
     for i, entity in enumerate(entities, start=1):
         ###########################################################
@@ -121,31 +147,30 @@ def main():
         ###########################################################
         # In this example, all components run at the same frequency
         mathematical_model     = SingleIntegrator2D(max_velocity = max_velocity_agents, unique_identifier = agent.id)
+        components             = []
+        if agent.id == 1:
+            components.append(PyBulletCamera(agent.id, env, TimeIntervalAsyncLoopLock(TIME_INTERVAL)))
+            
+        components.append(PyBulletPerceptionSystem(agent.id, env, TimeIntervalAsyncLoopLock(TIME_INTERVAL)))
+        components.append(Transmitter(agent.id,))
+        components.append(Receiver(agent.id))
         
+        high_level_controller = STLController(agent.id,dynamical_model_math = mathematical_model, async_loop_lock=TimeIntervalAsyncLoopLock(TIME_INTERVAL))
+        low_level_controller  =  VelocityController(agent.id, async_loop_lock=TimeIntervalAsyncLoopLock(TIME_INTERVAL))
+        components.append(high_level_controller)
+        components.append(low_level_controller)
         
-        perception_system      = StateOnlyPerceptionSystem(agent.id, env, TimeIntervalAsyncLoopLock(TIME_INTERVAL))
-        high_level_controller  = STLController(agent.id,dynamical_model_math = mathematical_model, async_loop_lock=TimeIntervalAsyncLoopLock(TIME_INTERVAL))
-        low_level_controller   = VelocityController(agent.id, async_loop_lock=TimeIntervalAsyncLoopLock(TIME_INTERVAL))
-        communication_sender   = Transmitter(agent.id,)
-        communication_receiver = Receiver(agent.id) 
-        
-        high_level_controller.add("new_control_input",low_level_controller.on_new_reference)
+        high_level_controller.add("new_control_input",low_level_controller.on_new_reference_velocity) # add callback function to the high level controller
         
         # create knowledge database
         tasks        = task_graph.task_list_for_node(agent.id)
         tokens       = leadership_tokens[agent.id]
-        initial_time = coordinated_clock.current_time #! resolve time problem for all the system. When the mission starts they all need to have the same time (we should give a clock to the agent coordinato)
+        initial_time = coordinated_clock.current_time
         
         knowledge_database = STLKnowledgeDatabase(stl_tasks=tasks, leadership_tokens=tokens, initial_time=initial_time, coordinated_clock=coordinated_clock)
         
         
-        agent.add_components(
-                             perception_system ,     
-                             high_level_controller , 
-                             low_level_controller  , 
-                             communication_sender  , 
-                             communication_receiver, 
-        )
+        agent.add_components(*components)
 
         ###########################################################
         # 5. Initialise the agent with some starting information  #

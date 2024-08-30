@@ -62,7 +62,8 @@ class Environment(BaseEnvironment):
             raise TypeError(f"Expected SpatialEntity, got {type(entity)}")
         position, orientation      = p.getBasePositionAndOrientation(entity.entity_id)
         velocity, angular_velocity = p.getBaseVelocity(entity.entity_id)
-        return np.array(position + orientation + velocity + angular_velocity )
+        euler_angles               = p.getEulerFromQuaternion(orientation)
+        return np.array(position + velocity + euler_angles + angular_velocity )
 
     @log(__LOGGER)
     def _add_entity(self, entity: Entity):
@@ -86,6 +87,46 @@ class Environment(BaseEnvironment):
         for entity in self._agent_entities.values():
             entity.step()
         if not self.use_real_time:
+            
+        #     pos_agent_1 = self.get_entity_state(self._agent_entities[1])[:3]
+        #     orientation = self.get_entity_state(self._agent_entities[1])[3:7]
+            
+        #     euler_angles = p.getEulerFromQuaternion(orientation)
+        #     yaw   = euler_angles[2]
+        #     pitch = euler_angles[1]
+        #     roll  = euler_angles[0]
+            
+            
+        #     view_matrix1 = p.computeViewMatrixFromYawPitchRoll(
+        #     cameraTargetPosition=pos_agent_1,
+        #     distance=10,
+        #     yaw=yaw,
+        #     pitch=pitch,
+        #     roll=roll,
+        #     upAxisIndex=2
+        #     )
+
+
+        #     # Update the projection matrix (shared by both cameras)
+        #     projection_matrix = p.computeProjectionMatrixFOV(
+        #         fov=60,
+        #         aspect=1.0,
+        #         nearVal=0.1,
+        #         farVal=100.0
+        #     )
+            
+        #     # Capture the image from Camera 1
+        #     width, height, rgbImg1, depthImg1, segImg1 = p.getCameraImage(
+        #         width=640,
+        #         height=480,
+        #         viewMatrix=view_matrix1,
+        #         projectionMatrix=projection_matrix
+        #     )
+            
+        #     rgbImg1 = np.reshape(rgbImg1, (height, width, 4))
+            
+
+    
             p.stepSimulation()
         
         self._coordinate_clock._step_time(self._sim_time_interval)
@@ -110,3 +151,4 @@ class CoordinatedClock() :
 
     def _step_time(self, time_interval):
         self._clock_time += time_interval
+        print(self._clock_time)

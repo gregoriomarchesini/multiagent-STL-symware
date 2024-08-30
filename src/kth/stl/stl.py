@@ -275,6 +275,12 @@ class F(TemporalOperator):
     def __str__(self):
         return f"F_[{self._time_interval.a}, {self._time_interval.b}]"
     
+    
+    def __add__(self, always_operator:"G") -> "G":
+        """to have the eventually always you locate the start of the always at a random value between the start of the eventually and the end of the always"""
+        always_operator = G(always_operator.time_interval.a + self._time_of_satisfaction,always_operator.time_interval.b + self._time_of_satisfaction)
+        return always_operator
+    
 
 
 
@@ -797,7 +803,7 @@ class IndependentLinearBarrierFunction(BarrierFunction):
         return self._gamma_function.compute_gradient(t)*self._switch_function.compute(t) # the time derivative of the barrier function is the time derivative of the gamma function
 
 
-BIG_NUMBER = 1E3
+BIG_NUMBER = 1E2
 class IndependentSmoothMinBarrierFunction(BarrierFunction):
     def __init__(self, list_of_barrier_functions: list[IndependentLinearBarrierFunction],eta:float = 1) -> None:
         self._list_of_barrier_functions = list_of_barrier_functions
@@ -825,8 +831,8 @@ class IndependentSmoothMinBarrierFunction(BarrierFunction):
             sum += ca.exp(-self._eta*(barrier_function.compute(x,t) + (1. - barrier_function._switch_function.compute(t))*BIG_NUMBER/self._eta))  
             # ^^ each terms becomes very big when the switch function is off and the gradient of that component will be zero because the linear barrier component sets the gradient to zero (using the switch function)
         
-        smooth_min_sym      = -ca.log(sum)/self._eta
-        smooth_min_fun      = ca.Function("smooth_min",[x,t],[smooth_min_sym * ca.if_else(cumulative_switch>0.,1.0,0.)])
+        smooth_min_sym      = -ca.log(sum)/self._eta * ca.if_else(cumulative_switch>0.,1.0,0.)
+        smooth_min_fun      = ca.Function("smooth_min",[x,t],[smooth_min_sym])
         gradient_fun        = ca.Function("smooth_min_gradient",[x,t],[ca.jacobian(smooth_min_sym,x)])
         time_derivative_fun = ca.Function("smooth_min_time_derivative",[x,t],[ca.jacobian(smooth_min_sym,t)])
         
@@ -890,8 +896,8 @@ class CollaborativeSmoothMinBarrierFunction(BarrierFunction):
             sum += ca.exp(-self._eta* ( barrier_function.compute(x_source=x_source,x_target=x_target,t=t)  + (1. - barrier_function._switch_function.compute(t))*BIG_NUMBER/self._eta) ) 
             # ^^ each terms becomes very big when the switch function is off and the gradient of that component will be zero because the linear barrier component sets the gradient to zero (using the switch function)
         
-        smooth_min_sym      = -1/self._eta * ca.log(sum)
-        smooth_min_fun      = ca.Function("smooth_min",[x_source,x_target,t],[smooth_min_sym* ca.if_else(cumulative_switch>0. ,1.0,0.)])
+        smooth_min_sym      = (-1/self._eta * ca.log(sum)) * ca.if_else(cumulative_switch>0.,1.0,0.)
+        smooth_min_fun      = ca.Function("smooth_min",[x_source,x_target,t],[smooth_min_sym])
         gradient_fun        = ca.Function("smooth_min_gradient",[x_source,x_target,t],[ca.jacobian(smooth_min_sym,x_target)]) 
         time_derivative_fun = ca.Function("smooth_min_time_derivative",[x_source,x_target,t],[ca.jacobian(smooth_min_sym,t)])
         

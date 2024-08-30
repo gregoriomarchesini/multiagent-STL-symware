@@ -416,6 +416,7 @@ class STLController(Controller):
             raise RuntimeError(f"Agent {self._unique_identifier} does not have the best impact from leader {neighbour_id} bceause this is not a leader for him. This is a bug. Contact the developers")
         
         if neighbour_best_impact is None: # Best impact is not available yet!
+            self.__LOGGER.info(f"Best impact from leader {neighbour_id} is not available yet. Stand by...")
             return None
                 
         current_agent_state  = agents_states[self._unique_identifier]  # your current state
@@ -736,9 +737,16 @@ class STLController(Controller):
         self.__LOGGER.info("From inside compute")
         self.__LOGGER.info(f"Current time is {current_time}")
         self.__LOGGER.info(f"Agents states : {agents_states}")
-        self.__LOGGER.info(f"some Info: ")
-        self.__LOGGER.info(f"Has received worse impact from follower : {self.has_received_worse_impact_from_follower}")
+        self.__LOGGER.info(f"Some Info: ")
+        self.__LOGGER.info(f"Agent is leaf : {self._is_leaf}")
+        self.__LOGGER.info(f"Has follower neighbour : {self._follower_neighbour!= None}")
+        if self._follower_neighbour!= None :
+            self.__LOGGER.info(f"Has received worse impact from follower : {self.has_received_worse_impact_from_follower}")
+        else:
+            self.__LOGGER.info(f"Does not have any follower")
+            
         self.__LOGGER.info(f"Is ready to compute gamma : {self.is_ready_to_compute_gamma}")
+        self.__LOGGER.info(f"Gamma tildes : {self._gamma_tilde}")
         self.__LOGGER.info(f"Has already computed gamma : {self._has_already_computed_gamma}")
     
        
@@ -746,20 +754,25 @@ class STLController(Controller):
             self.compute_gamma_tilde_values(current_time =  current_time, 
                                             agents_state = agents_states)
         
-        if self.is_ready_to_compute_gamma and (not self._has_already_computed_gamma):
-            self.__LOGGER.info(f"Agent {self.agent_id} computing gamma")
+        elif self.is_ready_to_compute_gamma and (not self._has_already_computed_gamma):
+            self.__LOGGER.info("Computing gamma and sanding impacts")
             self.compute_gamma()
             self.compute_best_impact_for_follower(agents_states = agents_states,
                                               current_time  = current_time)
             self.compute_worse_impact_for_leaders()
             self._has_already_computed_gamma = True
         
-        
-        if self._has_already_computed_gamma and (self.has_received_worse_impact_from_follower or self._follower_neighbour == None):
+        else :    
+            self.__LOGGER.info(f"Sending Notification ")
+            self.compute_best_impact_for_follower(agents_states = agents_states,
+                                              current_time  = current_time)
+            self.compute_worse_impact_for_leaders()
+            self._has_already_computed_gamma = True
+           
+        if self._has_already_computed_gamma and (self.has_received_worse_impact_from_follower or (self._follower_neighbour == None)):
             self.__LOGGER.info(f"Agent {self.agent_id} computing control input")
-            self._has_already_computed_gamma = False
             self._last_velocity_input = self.compute_control_input(agents_states,current_time) # update control input
-            
+            self._has_already_computed_gamma = False
         
         return (self._last_velocity_input,TimeSeries())
         

@@ -631,7 +631,7 @@ class SingleIntegratorDroneModel(DynamicalModel):
         control_input:
             Initial control input of the agent. It also used to validate the size of future control inputs
         """
-        super().__init__(ID, control_input=np.zeros((4)))
+        super().__init__(ID, control_input=np.zeros((3)))
         self._urp_path = URDF.DRONE_CF2X.urdf
         self._load_urdf_args()
         #### Compute constants #####################################
@@ -656,10 +656,9 @@ class SingleIntegratorDroneModel(DynamicalModel):
     @property
     def subinputs_dict(self) -> DroneModelSubinputs:
         return {
-            "vx": self.control_input[0],
-            "vy": self.control_input[1],
-            "fx_dot_dot": self.control_input[2],
-            "fy_dot_dot": self.control_input[3],
+            "fx": self.control_input[0],
+            "fy": self.control_input[1],
+            "toque": self.control_input[2],
         }
 
     def _load_urdf_args(self):
@@ -710,11 +709,10 @@ class SingleIntegratorDroneModel(DynamicalModel):
         
         fx         = self.control_input[0]
         fy         = self.control_input[1]
-        pitch      = self.control_input[2]
-        roll       = self.control_input[3]
+        toque      = self.control_input[2]
         
         p.applyExternalForce(self._entity_id, 4,forceObj=[fx, fy, self.gravity],posObj=[0, 0, 0],flags=p.LINK_FRAME)
-        p.applyExternalTorque(self._entity_id, 4, torqueObj=[0, 0, 0], flags=p.LINK_FRAME)
+        p.applyExternalTorque(self._entity_id, 4, torqueObj=[0, 0, 0], flags=p.LINK_FRAME) #! problem with the world frame. Pybullet dows not have a correct workd frame it seems
         
     def _get_torque(self, rpm: float, forces: np.ndarray) -> tuple[float, float, float]:
         """Just a place holder since the get torques function is not used anywhere in this model"""

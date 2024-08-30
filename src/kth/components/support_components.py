@@ -3,7 +3,7 @@ from   typing import Iterable
 from   enum import Enum
 from   dataclasses import dataclass, field
 import asyncio
-import networkx as nx
+import pybullet as p
 
 
 from symaware.base.data import Identifier
@@ -36,10 +36,8 @@ from kth.components.high_level_controller import STLController
 from kth.pybullet_env.environment import CoordinatedClock
 
 
-class StateOnlyPerceptionSystem(PerceptionSystem):
-    """
-    Unfortunately, this perception system is very limited, and can only perceive the state of the agent itself.
-    """
+class PyBulletPerceptionSystem(PerceptionSystem):
+    
     __LOGGER = get_logger(__name__, "StateOnlyPerceptionSystem")
     def _compute(self) -> dict[Identifier, StateObservation]:
         """
@@ -49,13 +47,79 @@ class StateOnlyPerceptionSystem(PerceptionSystem):
         
         new_perception_info = {}
         for agent_id in self._env._agent_entities.keys() :
-            pos3d = self._env.get_agent_state(agent_id)[:3]   # position
-            vel3d = self._env.get_agent_state(agent_id)[7:10] # velocity
-            state = np.concatenate((pos3d,vel3d))
-            new_perception_info[agent_id] = StateObservation(agent_id, state)
+            new_perception_info[agent_id] = StateObservation(agent_id, self._env.get_agent_state(agent_id))
         
         
         return new_perception_info
+
+
+class PyBulletCamera(PerceptionSystem):
+    """
+    Unfortunately, this perception system is very limited, and can only perceive the state of the agent itself.
+    """
+    __LOGGER = get_logger(__name__, "Camera")
+    
+    
+     # Update the projection matrix (shared by both cameras)
+    projection_matrix = p.computeProjectionMatrixFOV(
+                                                    fov=80,
+                                                    aspect=1.0,
+                                                    nearVal=0.1,
+                                                    farVal=100.0
+                                                    )
+    
+    
+    def _compute(self) -> dict[Identifier, StateObservation]:
+        """
+        Discard the information about any other agent.
+        Only return the information related to the agent itself.
+        """
+        
+        state = self._agent.self_awareness.state
+        
+        pos = state[:3]
+        orientation = state[3:7]
+        
+        euler_angles = p.getEulerFromQuaternion(orientation)
+        yaw   = euler_angles[2]
+        pitch = euler_angles[1]
+        roll  = euler_angles[0]
+        
+        
+        view_matrix1 = p.computeViewMatrixFromYawPitchRoll(
+        cameraTargetPosition=pos,
+        distance=10,
+        yaw=yaw,
+        pitch=pitch,
+        roll=roll,
+        upAxisIndex=2
+        )
+        
+        # Capture the image from Camera 1
+        width, height, rgbImg1, depthImg1, segImg1 = p.getCameraImage(
+            width=640,
+            height=480,
+            viewMatrix=view_matrix1,
+            projectionMatrix=self.projection_matrix
+        )
+
+        return dict()
+    
+    def update(self, *args, **kwargs):
+        pass
+    
+    
+    
+    
+    
+    
+    
+    
+    
+
+        
+        
+        
 
     
 
@@ -237,11 +301,10 @@ class VelocityController(Controller):
         
         self._Kp_v = 3
         self._Kd_v = 0.001
-        self._Ki_v = 1
-        
+        self._Ki_v = 1 
     
     
-    def on_new_reference(self, new_reference: np.ndarray):
+    def on_new_reference_velocity(self, new_reference: np.ndarray):
         """
         Set the new reference for the controller.
         The reference is a 3D vector with the x, y, and z components of the velocity.
@@ -249,8 +312,8 @@ class VelocityController(Controller):
         self._vx_ref = new_reference[0]
         self._vy_ref = new_reference[1]
         self._last_reference_time = self._coordinated_clock.current_time
-        
-        
+
+    
     def initialise_component(
             self,
             agent: "Agent",
@@ -324,7 +387,9 @@ class VelocityController(Controller):
         pitch = fx/self._dynamical_model.iyy
         roll  = fy/self._dynamical_model.ixx
         
-        forces = np.array([fx,fy,pitch,roll]) # !todo: nicely change the framwork to get forces instead of RPM
+        torque_z = 0.
+        
+        forces = np.array([fx,fy,torque_z]) 
 
         return forces, TimeSeries() # the dynamical model step function was modified to accept forces
     
