@@ -84,12 +84,14 @@ class Environment(BaseEnvironment):
         p.loadURDF(os.path.join(pybullet_data.getDataPath(), "plane.urdf"))
 
     def step(self):
+        self._notify("stepping", self)
         for entity in self._agent_entities.values():
             entity.step()
         if not self.use_real_time:
             p.stepSimulation()
         
         self._coordinate_clock._step_time(self._sim_time_interval)
+        self._notify("stepped", self)
 
     def stop(self):
         self._is_pybullet_initialized = False
@@ -97,8 +99,63 @@ class Environment(BaseEnvironment):
     
     def get_coordinated_clock(self):
         return self._coordinate_clock
-    
 
+    def set_debug_camera_position(
+        self, distance: float, yaw: float, pitch: float, position: tuple[float, float, float]
+    ):
+        """
+        Set the position of the debug camera in the pybullet environment.
+
+        Args
+        ----
+        distance:
+            Distance from the target
+        yaw:
+            Yaw angle of the camera
+        pitch:
+            Pitch angle of the camera
+        position:
+            Position of the camera
+        """
+        p.resetDebugVisualizerCamera(distance, yaw, pitch, position)
+
+    def take_screenshot(
+        self, width: int = 1440, height: int = 1120, shadow: bool = False, renderer: int = p.ER_TINY_RENDERER
+    ) -> np.ndarray:
+        """
+        Take a screenshot of the current view of the camera and return it as a 3-dimensional numpy array
+        of (height x width x rgba).
+        The rgba values are in the interval [0, 1].
+
+        An image produced this way can be saved on the disk using the matplotib utility.
+
+        Example
+        -------
+        >>> # doctest: +SKIP
+        >>> import pybullet as p
+        >>> import matplotlib.pyplot as plt
+        >>> from symaware.simulators.pybullet import Environment
+        >>>
+        >>> env = Environment(connection_method=p.DIRECT)
+        >>> img = env.take_screenshot(width=1080, height=720)
+        >>> plt.imsave("my_image", img)
+
+        Args
+        ----
+        width:
+            Width of the image
+        height:
+            Height of the image
+        shadow:
+            Whether to capture the shadows of the image
+        renderer:
+            Underlying renderer used by pybullet
+
+        Returns:
+            3-dimensional numpy array containing the screenshot of the simulation
+        """
+        _, _, img, _, _ = p.getCameraImage(width=width, height=height, shadow=shadow, renderer=renderer)
+        return np.reshape(img, (height, width, 4)) * 1.0 / 255.0
 
 
 class CoordinatedClock() :
