@@ -1,6 +1,8 @@
 
 import numpy as np
 import time 
+import matplotlib.pyplot as plt
+import os
 from symaware.base import (
     Agent,
     AgentCoordinator,
@@ -77,7 +79,19 @@ predicate    = CollaborativePredicate( polytope_0 = polytope, center = np.array(
 task         = (F(10,20)+ G(0,40)) @ predicate
 task_graph.attach(task)
 
+class Snapshot:
 
+    counter: int = 0
+
+    def save_snapshot(self, env: Environment):
+        # Use this method to change the camera position.
+        # It is possible to either set it at the very beginning or change it at every step
+        env.set_debug_camera_position(10, 10, 0, (1, 2, 3))
+        img = env.take_screenshot()
+
+        os.makedirs("img", exist_ok=True)
+        plt.imsave(f"img/frame-{self.counter}.jpeg", img)
+        self.counter += 1
 
 
 # ############################
@@ -118,11 +132,13 @@ def main():
     LOG_LEVEL     = "ERROR"
 
     initialize_logger(LOG_LEVEL)
+    snapshot = Snapshot()
     
     ###########################################################
     # 1. Create the environment and add the obstacles         #
     ###########################################################
     env = Environment(sim_time_interval = TIME_INTERVAL)
+    env.add_on_stepped(snapshot.save_snapshot)
     coordinated_clock = env.get_coordinated_clock()
 
     ###########################################################

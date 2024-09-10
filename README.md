@@ -10,6 +10,14 @@ For this situation each agent is provided with a controller which is applied to 
 The controller for each agent is designed such that an agent is **leader** of a single task and it **follower** of all the others.
 
 
+## Installation
+
+To install all the dependencies needed to run the example python scripts, run the following command.
+It is advisable to use a virtual environment (venv, conda) to avoid conflicts with other projects.
+
+```bash
+pip install -r requirements.txt --extra-index-url https://gitlab.mpi-sws.org/api/v4/projects/2668/packages/pypi/simple
+```
 
 # Details on the Code 
 
