@@ -94,22 +94,6 @@ class Snapshot:
         self.counter += 1
 
 
-# ############################
-# ## Collaborative task 
-# polytope     = regular_2D_polytope(5, 1)
-# predicate    = CollaborativePredicate( polytope_0 = polytope, center = np.array([1.,1.]),source_agent_id =2, target_agent_id =3 )
-# task         = F(40,50) @ predicate
-# task_graph.attach(task)
-
-
-# ## Collaborative task 
-# polytope     = regular_2D_polytope(5, 1)
-# predicate    = CollaborativePredicate( polytope_0 = polytope, center = np.array([2.,1.]),source_agent_id =7, target_agent_id =6 )
-# task         = G(18,100) @ predicate
-# task_graph.attach(task)
-
-
-
 
 leadership_tokens    = token_passing_algorithm(task_graph, manually_set_leader=1)
 print_tokens(leadership_tokens)
