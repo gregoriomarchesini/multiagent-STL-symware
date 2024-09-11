@@ -62,39 +62,6 @@ $$
 $$
 
 
-
-
-
-## Collaborative task 
-polytope     = regular_2D_polytope(5, 0.3)
-predicate    = CollaborativePredicate( polytope_0 = polytope, center = np.array([0.5,.5]),source_agent_id =1, target_agent_id =2 )
-task         = (F(23,24)+ G(0,4)) @ predicate
-task_graph.attach(task)
-
-## Collaborative task 
-polytope     = regular_2D_polytope(5, 0.3)
-predicate    = CollaborativePredicate( polytope_0 = polytope, center = np.array([0.5,-0.5]),source_agent_id =1, target_agent_id =3 )
-task         = (F(23,24)+ G(0,4)) @ predicate
-task_graph.attach(task)
-
-## Collaborative task 
-polytope     = regular_2D_polytope(5, 0.3)
-predicate    = CollaborativePredicate( polytope_0 = polytope, center = np.array([-0.5,-0.5]),source_agent_id =1, target_agent_id =4 )
-task         = (F(23,24)+ G(0,4)) @ predicate
-task_graph.attach(task)
-
-## Collaborative task 
-polytope     = regular_2D_polytope(5, 0.3)
-predicate    = CollaborativePredicate( polytope_0 = polytope, center = np.array([-.5,.5]),source_agent_id =1, target_agent_id =5 )
-task         = (F(23,24)+ G(0,4)) @ predicate
-task_graph.attach(task)
-
-
-
-
-
-
-
 # Details on the Code 
 
 Each Agent for this simulation is composed of 5 mains components 
