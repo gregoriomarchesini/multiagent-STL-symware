@@ -1,5 +1,5 @@
 {
     // This is the file that is read when you launch the scripts in the terminal
-    "python.analysis.extraPaths": ["${workspaceFolder}", "${workspaceFolder}/src", "/home/gregorio/Desktop/KTH_symaware_module/eicsymaware/src"],
-    "terminal.integrated.env.linux": {"PYTHONPATH": "${workspaceFolder}/src:/home/gregorio/Desktop/KTH_symaware_module/eicsymaware/src"}
+    "python.analysis.extraPaths": ["${workspaceFolder}", "${workspaceFolder}/src"],
+    "terminal.integrated.env.linux": {"PYTHONPATH": "${workspaceFolder}/src"}
 }

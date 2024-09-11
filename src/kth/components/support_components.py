@@ -196,7 +196,6 @@ class Receiver(CommunicationReceiver[DefaultAsyncLoopLock]):
                 "Agent %d: Received the message %s from agent %d", self.agent_id, message, message.sender_id
             )
             
-            # todo! we need a way to retrive components by name
             high_level_controller  = None
             controllers = self._agent.controllers
             for controller in controllers:

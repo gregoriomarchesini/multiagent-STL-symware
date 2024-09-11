@@ -36,78 +36,123 @@ np.random.seed(100)
 task_graph = TaskGraph()
 # add tasks 
 
+####### phase 1
 # Independent task 
-polytope     = regular_2D_polytope(5,  0.8)
-predicate    = IndependentPredicate( polytope_0 = polytope, center = np.array([6.,6.]), agent_id =1 )
-task         = G(10,20) @ predicate
+polytope     = regular_2D_polytope(5,  0.4)
+predicate    = IndependentPredicate( polytope_0 = polytope, center = np.array([3.,3.]), agent_id =1 )
+task         = G(3,6) @ predicate
 task_graph.attach(task)
 
 
 ## Collaborative task 
-polytope     = regular_2D_polytope(5, 0.8)
-predicate    = CollaborativePredicate( polytope_0 = polytope, center = np.array([0.,4.]),source_agent_id =1, target_agent_id =2 )
-task         = (F(10,20)+ G(0,40)) @ predicate
+polytope     = regular_2D_polytope(5, 0.3)
+predicate    = CollaborativePredicate( polytope_0 = polytope, center = np.array([0.,1.]),source_agent_id =1, target_agent_id =2 )
+task         = (F(3,6)+ G(0,1)) @ predicate
 task_graph.attach(task)
 
 ## Collaborative task 
-polytope     = regular_2D_polytope(5, 0.8)
-predicate    = CollaborativePredicate( polytope_0 = polytope, center = np.array([4.,0.]),source_agent_id =1, target_agent_id =3 )
-task         = (F(10,20) + G(0,40)) @ predicate
+polytope     = regular_2D_polytope(5, 0.3)
+predicate    = CollaborativePredicate( polytope_0 = polytope, center = np.array([1.,0.]),source_agent_id =1, target_agent_id =3 )
+task         = (F(3,6)+ G(0,1))  @ predicate
 task_graph.attach(task)
 
 ## Collaborative task 
-polytope     = regular_2D_polytope(5, 0.8)
-predicate    = CollaborativePredicate( polytope_0 = polytope, center = np.array([0.,-4.]),source_agent_id =1, target_agent_id =4 )
-task         = (F(10,20) + G(0,40)) @ predicate
+polytope     = regular_2D_polytope(5, 0.3)
+predicate    = CollaborativePredicate( polytope_0 = polytope, center = np.array([0.,-1.]),source_agent_id =1, target_agent_id =4 )
+task         = (F(3,6)+ G(0,1))  @ predicate
 task_graph.attach(task)
 
 ## Collaborative task 
-polytope     = regular_2D_polytope(5, 0.8)
-predicate    = CollaborativePredicate( polytope_0 = polytope, center = np.array([-4.,0.]),source_agent_id =1, target_agent_id =5 )
-task         = (F(10,20)+ G(0,40)) @ predicate
+polytope     = regular_2D_polytope(5, 0.3)
+predicate    = CollaborativePredicate( polytope_0 = polytope, center = np.array([-1.,0.]),source_agent_id =1, target_agent_id =5 )
+task         = (F(3,6)+ G(0,1))  @ predicate
+task_graph.attach(task)
+
+
+###################################
+####### phase 2 ###################
+###################################
+# Independent task 
+polytope     = regular_2D_polytope(5,  0.2)
+predicate    = IndependentPredicate( polytope_0 = polytope, center = np.array([0.,6.]), agent_id =1 )
+task         = G(15,18) @ predicate
 task_graph.attach(task)
 
 ## Collaborative task 
-polytope     = regular_2D_polytope(5, 0.8)
-predicate    = CollaborativePredicate( polytope_0 = polytope, center = np.array([2.,2.]),source_agent_id =2, target_agent_id =6 )
-task         = (F(10,20)+ G(0,40)) @ predicate
+polytope     = regular_2D_polytope(5, 0.3)
+predicate    = CollaborativePredicate( polytope_0 = polytope, center = np.array([1.,1.]),source_agent_id =1, target_agent_id =2 )
+task         = G(12,16) @ predicate
 task_graph.attach(task)
 
 ## Collaborative task 
-polytope     = regular_2D_polytope(5, 0.8)
-predicate    = CollaborativePredicate( polytope_0 = polytope, center = np.array([2.,2.]),source_agent_id =3, target_agent_id =7 )
-task         = (F(10,20)+ G(0,40)) @ predicate
+polytope     = regular_2D_polytope(5, 0.3)
+predicate    = CollaborativePredicate( polytope_0 = polytope, center = np.array([1.,-1.]),source_agent_id =1, target_agent_id =3 )
+task         = (G(12,16))  @ predicate
 task_graph.attach(task)
 
-class Snapshot:
+## Collaborative task 
+polytope     = regular_2D_polytope(5, 0.3)
+predicate    = CollaborativePredicate( polytope_0 = polytope, center = np.array([-1.,-1.]),source_agent_id =1, target_agent_id =4 )
+task         = (G(13,16))  @ predicate
+task_graph.attach(task)
 
-    counter: int = 0
+## Collaborative task 
+polytope     = regular_2D_polytope(5, 0.3)
+predicate    = CollaborativePredicate( polytope_0 = polytope, center = np.array([-1.,1.]),source_agent_id =1, target_agent_id =5 )
+task         = (G(12,16))  @ predicate
+task_graph.attach(task)
 
-    def save_snapshot(self, env: Environment):
-        # Use this method to change the camera position.
-        # It is possible to either set it at the very beginning or change it at every step
-        env.set_debug_camera_position(10, 10, 0, (1, 2, 3))
-        img = env.take_screenshot()
 
-        os.makedirs("img", exist_ok=True)
-        plt.imsave(f"img/frame-{self.counter}.jpeg", img)
-        self.counter += 1
+
+###################################
+####### phase 3 ###################
+###################################
+polytope     = regular_2D_polytope(5,  0.4)
+predicate    = IndependentPredicate( polytope_0 = polytope, center = np.array([0,0]), agent_id =1 )
+task         = G(23,23) @ predicate
+task_graph.attach(task)
+
+
+## Collaborative task 
+polytope     = regular_2D_polytope(5, 0.3)
+predicate    = CollaborativePredicate( polytope_0 = polytope, center = np.array([0.5,.5]),source_agent_id =1, target_agent_id =2 )
+task         = (F(23,24)+ G(0,4)) @ predicate
+task_graph.attach(task)
+
+## Collaborative task 
+polytope     = regular_2D_polytope(5, 0.3)
+predicate    = CollaborativePredicate( polytope_0 = polytope, center = np.array([0.5,-0.5]),source_agent_id =1, target_agent_id =3 )
+task         = (F(23,24)+ G(0,4)) @ predicate
+task_graph.attach(task)
+
+## Collaborative task 
+polytope     = regular_2D_polytope(5, 0.3)
+predicate    = CollaborativePredicate( polytope_0 = polytope, center = np.array([-0.5,-0.5]),source_agent_id =1, target_agent_id =4 )
+task         = (F(23,24)+ G(0,4)) @ predicate
+task_graph.attach(task)
+
+## Collaborative task 
+polytope     = regular_2D_polytope(5, 0.3)
+predicate    = CollaborativePredicate( polytope_0 = polytope, center = np.array([-.5,.5]),source_agent_id =1, target_agent_id =5 )
+task         = (F(23,24)+ G(0,4)) @ predicate
+task_graph.attach(task)
+
 
 
 
 leadership_tokens    = token_passing_algorithm(task_graph, manually_set_leader=1)
 print_tokens(leadership_tokens)
-initial_agents_state = {1:np.array([0.,0.,1.,0.,0.,0.  , 0.,0.,0., 0.,0.,0.]),
-                        2:np.array([-1.,0.8,1.,0.,0.,0., 0.,0.,0., 0.,0.,0.]), 
-                        3:np.array([-0.2,0.,1.,0.,0.,0., 0.,0.,0., 0.,0.,0.]),
-                        4:np.array([-0.5,0.5,1.,0.,0.,0, 0.,0.,0., 0.,0.,0.]),
-                        5:np.array([1.,-0.8,1.,0.,0.,0., 0.,0.,0., 0.,0.,0.]),
-                        6:np.array([1.,-2.8,1.,0.,0.,0., 0.,0.,0., 0.,0.,0.]),
-                        7:np.array([-1.,1.8,1.,0.,0.,0., 0.,0.,0., 0.,0.,0.])}
+initial_agents_state = {1:np.array([0.  , -1.  ,1.,0.,0.,0.  , 0.,0.,0., 0.,0.,0.]),
+                        2:np.array([-1. , 1.8 ,1.,0.,0.,0., 0.,0.,0., 0.,0.,0.]), 
+                        3:np.array([-1.6, 0.  ,1.,0.,0.,0., 0.,0.,0., 0.,0.,0.]),
+                        4:np.array([-0.0, 0.5 ,1.,0.,0.,0, 0.,0.,0., 0.,0.,0.]),
+                        5:np.array([2.  ,-0.8 ,1.,0.,0.,0., 0.,0.,0., 0.,0.,0.])}
 
-max_velocity_agents = 5.
+max_velocity_agents = 10.
 entities: tuple[DroneCf2xEntity, ...] = (  DroneCf2xEntity(id=agent_id, model=SingleIntegratorDroneModel(ID=agent_id), position=initial_agents_state[agent_id][:3]) for agent_id in initial_agents_state.keys())
-target = SphereEntity(id=200, position=np.array([10.,10.,2.]), radius=1.0)
+target1 = SphereEntity(id=200, position=np.array([5.5,5.5,2.]), radius=1.0)
+target2 = SphereEntity(id=200, position=np.array([0.,8.,2.]), radius=1.0)
+
 def main():
     ###########################################################
     # 0. Parameters                                           #
@@ -116,20 +161,20 @@ def main():
     LOG_LEVEL     = "ERROR"
 
     initialize_logger(LOG_LEVEL)
-    snapshot = Snapshot()
     
     ###########################################################
     # 1. Create the environment and add the obstacles         #
     ###########################################################
     env = Environment(sim_time_interval = TIME_INTERVAL)
-    env.add_on_stepped(snapshot.save_snapshot)
+    # env.add_on_stepped(snapshot.save_snapshot)
     coordinated_clock = env.get_coordinated_clock()
 
     ###########################################################
     # For each agent in the simulation...                     #
     ###########################################################
     agent_coordinator = AgentCoordinator[STLKnowledgeDatabase](env)
-    env.add_entities(target)
+    env.add_entities(target1)
+    env.add_entities(target2)
     
     for i, entity in enumerate(entities, start=1):
         ###########################################################
