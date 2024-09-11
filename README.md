@@ -56,5 +56,10 @@ The `HighLevelController` controller takes care of establishing an high level ve
 ## LowLevelController
 The low level controller takes care of sending the force and torque commands to the drone to achieve the velocity reference set by the `HighLevelController` applying a PD controller to reach the desired velocity.
 
+## Acknowledgements
+This work was supported in part by the Horizon Europe EIC project SymAware (101070802), the ERC LEAFHOUND Project, the Swedish Research Council (VR), Digital Futures, and the Knut and Alice Wallenberg (KAW) Foundation. 
+
 ## Contacts
-For any question please contact the developers at 
+For any question you can contact the developers team at the main SymAware [here](https://gitlab.mpi-sws.org/sadegh/eicsymaware/-/tree/base?ref_type=heads)
+
+Happy Coding!:)
