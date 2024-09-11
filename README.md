@@ -20,6 +20,80 @@ It is advisable to use a virtual environment (venv, conda) to avoid conflicts wi
 ```bash
 pip install -r requirements.txt --extra-index-url https://gitlab.mpi-sws.org/api/v4/projects/2668/packages/pypi/simple
 ```
+## Simulation details
+The main simulation file is located ar `simulations/stl_drone_example.py`.
+
+The simulations hows an example of a multi-agent system composed of 5 drones connected by a star-graph. The system is tasked with viting two target locaitons while maintaining a given time-varying reference formation. The task assigned to the system can be divided in three phases : exploration of target 1, exploration of target 2 and return phase.
+
+1) Exploration of target 1
+
+$$  
+\begin{align}
+\phi_{1} = G_{[3,6]} (0.4 - \|x_1-[3.,3.]\| )\\
+\phi_{12} = F_{[3,6]}G_{[0,1]} (0.3 - \|x_1- x_2 -[0.,1.]\| )\\
+\phi_{13} = F_{[3,6]}G_{[0,1]} (0.3 - \|x_1- x_3 -[1.,0.]\| )\\
+\phi_{14} = F_{[3,6]}G_{[0,1]} (0.3 - \|x_1- x_4 -[0.,-1.]\| )\\
+\phi_{15} = F_{[3,6]}G_{[0,1]} (0.3 - \|x_1- x_5 -[-1.,0.]\| )\\
+\end{align}
+$$
+
+2) Exploration of target 2
+
+$$  
+\begin{align}
+\phi_{1}  = G_{[15,18]} (0.4 - \|x_1-[0.,6.]\| )\\
+\phi_{12} = G_{[12,16]} (0.3 - \|x_1- x_2 -[1.,1. ]\| )\\
+\phi_{13} = G_{[12,16]} (0.3 - \|x_1- x_3 -[1.,-1. ]\| )\\
+\phi_{14} = G_{[12,16]} (0.3 - \|x_1- x_4 -[-1.,-1.]\| )\\
+\phi_{15} = G_{[12,16]} (0.3 - \|x_1- x_5 -[-1.,1.]\| )\\
+\end{align}
+$$
+
+3) Return phase 
+
+$$  
+\begin{align}
+\phi_{1} = G_{[23,23]} (0.4 - \|x_1-[30.,0.]\| )\\
+\phi_{12} = F_{[23,24]}G_{[0,4]} (0.3 - \|x_1- x_2 -[.5,.5 ]\| )\\
+\phi_{13} = F_{[23,24]}G_{[0,4]} (0.3 - \|x_1- x_3 -[.5,-0.5 ]\| )\\
+\phi_{14} = F_{[23,24]}G_{[0,4]} (0.3 - \|x_1- x_4 -[-.5,-.5]\| )\\
+\phi_{15} = F_{[23,24]}G_{[0,4]} (0.3 - \|x_1- x_5 -[-.5,.5]\| )\\
+\end{align}
+$$
+
+
+
+
+
+## Collaborative task 
+polytope     = regular_2D_polytope(5, 0.3)
+predicate    = CollaborativePredicate( polytope_0 = polytope, center = np.array([0.5,.5]),source_agent_id =1, target_agent_id =2 )
+task         = (F(23,24)+ G(0,4)) @ predicate
+task_graph.attach(task)
+
+## Collaborative task 
+polytope     = regular_2D_polytope(5, 0.3)
+predicate    = CollaborativePredicate( polytope_0 = polytope, center = np.array([0.5,-0.5]),source_agent_id =1, target_agent_id =3 )
+task         = (F(23,24)+ G(0,4)) @ predicate
+task_graph.attach(task)
+
+## Collaborative task 
+polytope     = regular_2D_polytope(5, 0.3)
+predicate    = CollaborativePredicate( polytope_0 = polytope, center = np.array([-0.5,-0.5]),source_agent_id =1, target_agent_id =4 )
+task         = (F(23,24)+ G(0,4)) @ predicate
+task_graph.attach(task)
+
+## Collaborative task 
+polytope     = regular_2D_polytope(5, 0.3)
+predicate    = CollaborativePredicate( polytope_0 = polytope, center = np.array([-.5,.5]),source_agent_id =1, target_agent_id =5 )
+task         = (F(23,24)+ G(0,4)) @ predicate
+task_graph.attach(task)
+
+
+
+
+
+
 
 # Details on the Code 
 
